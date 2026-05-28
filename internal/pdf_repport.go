@@ -261,7 +261,7 @@ func pdfHeader(pdf *fpdf.Fpdf, v models.Visit) {
 	pdf.CellFormat(20, 6, "Dato", "", 0, "", false, 0, "")
 	pdf.CellFormat(30, 6, v.VisitDate.Format("2006-01-02"), "", 0, "", false, 0, "")
 	pdf.CellFormat(10, 6, "Kl:", "", 0, "", false, 0, "")
-	pdf.CellFormat(40, 6, v.VisitResponse.ActTime[5:], "", 1, "", false, 0, "")
+	pdf.CellFormat(40, 6, v.VisitResponse.ActTime[:5], "", 1, "", false, 0, "")
 
 	pdf.Ln(2) // Small gap
 	pdf.CellFormat(40, 6, "Debitorer:", "", 1, "", false, 0, "")
