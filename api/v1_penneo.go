@@ -40,7 +40,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -100,6 +99,7 @@ type CaseFileResp struct {
 	ID        int `json:"id"`
 	Status    int `json:"status"`
 	Documents []struct {
+		ID         int    `json:"id"`
 		DocumentID string `json:"documentId"`
 	} `json:"documents"`
 }
@@ -462,23 +462,25 @@ func fetchCaseFileStatus(accessToken, caseFileID string, retry bool) (*CaseFileR
 	return &result, accessToken, nil
 }
 
-func getSignedDocument(accessToken string, documentID string) ([]byte, error) {
-	// Error trace shows v1 controller handling request. Use v1 path.
-	u, _ := url.JoinPath(baseUrl, "api/v3/documents", documentID, "content")
+func getSignedDocument(accessToken string, documentID int) ([]byte, error) {
+	u := fmt.Sprintf("https://app.penneo.com/api/v3/documents/%d/content", documentID)
 
-	req, _ := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/pdf") // Explicitly ask for PDF
+	req.Header.Set("Accept", "application/pdf")
 
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(b))
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("penneo documents/%d/content: status %d: %s", documentID, resp.StatusCode, body)
 	}
 
 	return io.ReadAll(resp.Body)
@@ -560,28 +562,25 @@ WaitLoop:
 
 	hub.Notify(caseFileID, `{"status":"signed"}`)
 
-	// Fetch casefile to get documentID
 	cf, newTok, err := fetchCaseFileStatus(accessToken, caseFileID, true)
 	accessToken = newTok
-
 	if err != nil || len(cf.Documents) == 0 {
 		log.Printf("[penneo] fetch docs failed %s: %v", caseFileID, err)
 		hub.Notify(caseFileID, `{"status":"error","message":"fetch documents failed"}`)
 		return
 	}
-	documentID := fmt.Sprintf("%d", cf.Documents[0].DocumentID) // Convert int to string
-	pdfBytes, err := getSignedDocument(accessToken, documentID)
+
+	pdfBytes, err := getSignedDocument(accessToken, cf.Documents[0].ID)
 	if err != nil {
 		log.Printf("[penneo] get pdf failed %s: %v", caseFileID, err)
 		hub.Notify(caseFileID, `{"status":"error","message":"get pdf failed"}`)
 		return
 	}
 
-	// TODO: AdvoPro upload
-	// if err := uploadToAdvoPro(pdfBytes); err != nil { ... }
-	log.Printf("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
+	// TODO: Advoproupload(pdfbytes)
 
-	hub.Notify(caseFileID, fmt.Sprintf(`{"status":"completed","documentId":%q,"size":%d}`, documentID, len(pdfBytes)))
+	fmt.Println("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
+	hub.Notify(caseFileID, fmt.Sprintf(`{"status":"completed","documentId":%d,"size":%d}`, cf.Documents[0].ID, len(pdfBytes)))
 }
 
 // =====================
