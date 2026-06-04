@@ -396,18 +396,27 @@ func DebtInformation(c *gin.Context) {
 		})
 		return
 	}
-	data, err := internal.CurrentDebtCase(visit.Sagsnr)
-	// if an error occurs then just dont send any info
-	if err != nil {
-		fmt.Println(err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
 
-	c.JSON(http.StatusOK, data)
+	// GET THE CORRECT FILE
+	filepath := "./word_document.docx"
+	c.Header("Content-Disposition", "inline; filename=debt_info.docx")
 
+	c.File(filepath)
+	fmt.Println("debt info called")
+
+	/*
+		data, err := internal.CurrentDebtCase(visit.Sagsnr)
+		// if an error occurs then just dont send any info
+		if err != nil {
+			fmt.Println(err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, data)
+	*/
 }
 
 func DeleteVisit(c *gin.Context) {
