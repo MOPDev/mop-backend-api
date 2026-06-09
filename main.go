@@ -102,6 +102,10 @@ func start_server() {
 		apiv1.GET("/visit/pdf", middleware.RequireAuthOfficeWorker, api.VisitPDF)
 		apiv1.POST("visit/reviewed", middleware.RequireAuthOfficeWorker, api.ReviewedVisit)
 
+		apiv1.POST("/penneo/start", api.StartPenneoFlow)
+		apiv1.POST("/penneo/webhook", api.PenneoWebhook)
+		apiv1.GET("/penneo/events/:caseFileId", api.PenneoSSE)
+
 		// penneo integration
 
 		// following the flow from postman

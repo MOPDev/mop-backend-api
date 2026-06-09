@@ -4,11 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
+	"github.com/markuskjeldsen/mop-backend-api/initializers"
 	"github.com/markuskjeldsen/mop-backend-api/models"
 )
 
@@ -277,4 +280,67 @@ func byteToFloat(b []byte) float64 {
 		return 0.0 // or handle error as needed
 	}
 	return f
+}
+
+func GetAktivitetsrapporten(visitId uint64) (string, error) {
+	// from internal db get sagsnr
+	// Get visit/case info from DB
+	var visit models.Visit
+	result := initializers.DB.First(&visit, visitId)
+	if result.Error != nil {
+		return "", result.Error
+	}
+
+	query := `
+    SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
+    FROM vwKlientSagsforlob sf
+    WHERE sf.Sagsnr = @p1
+    AND sf.Extension = 'docx'
+    AND LOWER(sf.Tekst) LIKE '%aktivitetsrapport%'
+    ORDER BY sf.Sagsnr`
+
+	// Build path to the mounted drive
+	//mountPath := os.Getenv("DRIVE_MOUNT_PATH") // e.g. "/mnt/external"
+	advoproResult, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	if err != nil {
+		return "", err
+	}
+
+	// Sagsnr	Placering	Filnavn	Tekst	Tidspunkt
+	// 636000	\\MOPSRV01\AdvoPro\Opgaver\Jurist\MBB\636000	99999999.docx	Aktivitetsrapport	2024-05-30 09:35:14.270
+	// 636001	\\MOPSRV01\AdvoPro\Opgaver\Jurist\MBB\636001	99999999.docx	Aktivitetsrapport	2024-06-06 11:11:52.383
+
+	if len(advoproResult) == 0 {
+		return "", fmt.Errorf("There was no result")
+	}
+
+	winPlacering := toString(advoproResult[0]["Placering"]) // "\\MOPSRV01\AdvoPro\Opgaver\..."
+	winFilnavn := toString(advoproResult[0]["Filnavn"])     // "99999999.docx"
+
+	// 1. If running on your local Windows machine
+	if runtime.GOOS == "windows" {
+		// Windows handles backslashes and UNC paths (\\Server\Share) natively
+		return filepath.Join(winPlacering, winFilnavn), nil
+	}
+
+	// 2. Define the translation rules
+	winPrefix := `\\MOPSRV01\AdvoPro`
+	linuxMount := "/mnt/advopro"
+
+	// 3. Translate the path
+	// Remove the Windows server prefix
+	relPath := strings.TrimPrefix(winPlacering, winPrefix)
+
+	// Convert Windows backslashes (\) to Linux forward slashes (/)
+	relPath = strings.ReplaceAll(relPath, "\\", "/")
+
+	// 4. Combine into a final Linux path
+	finalPath := filepath.Join(linuxMount, relPath, winFilnavn)
+
+	// Optional: Verify file exists on disk
+	if _, err := os.Stat(finalPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist at path: %s", finalPath)
+	}
+
+	return finalPath, nil
 }

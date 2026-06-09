@@ -24,17 +24,20 @@
 
 // when signed get {{baseUrl}}/api/v3/documents/{{documentId}}/content for the signed pdf,
 // and send it to the advopro integration for document upload
-
 package api
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -44,6 +47,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// =====================
+// TYPES
+// =====================
 
 type PenneoTokenReq struct {
 	ClientID     string `json:"client_id"`
@@ -76,7 +83,6 @@ type WebhookSubscriptionResp struct {
 	UserID     int      `json:"userId"`
 }
 
-// Penneo sends this to our webhook endpoint
 type PenneoWebhookEvent struct {
 	EventType  string `json:"eventType"`
 	CaseFileID string `json:"caseFileId"`
@@ -90,8 +96,10 @@ type JobStatusReq struct {
 }
 
 type CaseFileResp struct {
+	ID        int `json:"id"`
 	Status    int `json:"status"`
 	Documents []struct {
+		ID         int    `json:"id"`
 		DocumentID string `json:"documentId"`
 	} `json:"documents"`
 }
@@ -101,192 +109,210 @@ type JobStatusResp struct {
 	Result    struct {
 		Data struct {
 			CaseFile struct {
-				ID string `json:"id"`
+				ID int64 `json:"id"`
 			} `json:"caseFile"`
 		} `json:"data"`
 	} `json:"result"`
 }
 
-// Stored between steps
 type PenneoJobState struct {
 	UUID        string
 	PayloadHash string
 	AccessToken string
 }
 
-// SSE client to push updates to frontend
-type SSEClient struct {
-	CaseFileID string
-	Channel    chan string
-}
+// =====================
+// CONFIG
+// =====================
+
+var (
+	authUrl = "https://login.penneo.com/"
+	baseUrl = "https://app.penneo.com/"
+)
 
 // =====================
-// SSE HUB
-// Keeps track of frontend listeners waiting for updates
+// SSE HUB — frontend listeners
 // =====================
+
+type SSEClient struct {
+	Channel chan string
+}
 
 type SSEHub struct {
 	mu      sync.RWMutex
-	clients map[string]*SSEClient // keyed by caseFileId
+	clients map[string][]*SSEClient // multiple listeners per casefile OK
 }
 
-var hub = &SSEHub{
-	clients: make(map[string]*SSEClient),
-}
+var hub = &SSEHub{clients: make(map[string][]*SSEClient)}
 
 func (h *SSEHub) Register(caseFileID string) *SSEClient {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	client := &SSEClient{
-		CaseFileID: caseFileID,
-		Channel:    make(chan string, 1),
-	}
-	h.clients[caseFileID] = client
+	client := &SSEClient{Channel: make(chan string, 8)}
+	h.clients[caseFileID] = append(h.clients[caseFileID], client)
 	return client
 }
 
-func (h *SSEHub) Notify(caseFileID string, message string) {
+func (h *SSEHub) Unregister(caseFileID string, client *SSEClient) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	list := h.clients[caseFileID]
+	for i, c := range list {
+		if c == client {
+			h.clients[caseFileID] = append(list[:i], list[i+1:]...)
+			break
+		}
+	}
+	if len(h.clients[caseFileID]) == 0 {
+		delete(h.clients, caseFileID)
+	}
+	close(client.Channel)
+}
+
+func (h *SSEHub) Notify(caseFileID, message string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-
-	if client, ok := h.clients[caseFileID]; ok {
+	for _, c := range h.clients[caseFileID] {
 		select {
-		case client.Channel <- message:
+		case c.Channel <- message:
 		default:
-			// Client channel full, skip
 		}
 	}
 }
 
-func (h *SSEHub) Unregister(caseFileID string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	delete(h.clients, caseFileID)
+// =====================
+// PENDING JOBS — webhook → goroutine bridge
+// =====================
+
+type pendingJob struct {
+	signed chan struct{} // closed when signed event received
 }
 
-var authUrl = "https://login.penneo.com"
-var baseUrl = "https://app.penneo.com"
+type pendingRegistry struct {
+	mu   sync.Mutex
+	jobs map[string]*pendingJob
+}
 
-func getAccessToken(c *gin.Context) (*PenneoTokenResp, error) {
+var pending = &pendingRegistry{jobs: make(map[string]*pendingJob)}
+
+func (p *pendingRegistry) Add(caseFileID string) *pendingJob {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	j := &pendingJob{signed: make(chan struct{})}
+	p.jobs[caseFileID] = j
+	return j
+}
+
+func (p *pendingRegistry) SignalSigned(caseFileID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if j, ok := p.jobs[caseFileID]; ok {
+		select {
+		case <-j.signed: // already closed
+		default:
+			close(j.signed)
+		}
+	}
+}
+
+func (p *pendingRegistry) Remove(caseFileID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.jobs, caseFileID)
+}
+
+// =====================
+// PENNEO API CALLS
+// =====================
+
+func getAccessToken() (*PenneoTokenResp, error) {
 	clientId := os.Getenv("PENNEO_CLIENTID")
 	clientSecret := os.Getenv("PENNEO_CLIENTSECRET")
-	ApiKey := os.Getenv("PENNEO_APIKEY")
-	ApiSecret := os.Getenv("PENNEO_APISECRET")
+	apiKey := os.Getenv("PENNEO_APIKEY")
+	apiSecret := os.Getenv("PENNEO_APISECRET")
 
-	// Generate nonce
-	nonceBytes := make([]byte, 16)
-	rand.Read(nonceBytes)
+	nonceBytes := make([]byte, 20) // 20 bytes like CryptoJS.random(20)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return nil, fmt.Errorf("gen nonce: %w", err)
+	}
 	nonce := base64.StdEncoding.EncodeToString(nonceBytes)
+	createdAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z") // ms precision, Z suffix
 
-	// ISO 8601 timestamp
-	createdAt := time.Now().UTC().Format(time.RFC3339)
-
-	// SHA256 digest
-	h := sha256.New()
-	h.Write([]byte(nonce + createdAt + ApiSecret))
+	h := sha1.New()
+	h.Write(nonceBytes)
+	h.Write([]byte(createdAt))
+	h.Write([]byte(apiSecret))
 	digest := base64.StdEncoding.EncodeToString(h.Sum(nil))
 
 	payload := PenneoTokenReq{
-		ClientID:     clientId,
-		ClientSecret: clientSecret,
-		GrantType:    "api_keys",
-		Key:          ApiKey,
-		Nonce:        nonce,
-		CreatedAt:    createdAt,
-		Digest:       digest,
+		ClientID: clientId, ClientSecret: clientSecret,
+		GrantType: "api_keys", Key: apiKey,
+		Nonce: nonce, CreatedAt: createdAt, Digest: digest,
 	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal token request: %w", err)
-	}
+	body, _ := json.Marshal(payload)
 
 	resp, err := http.Post(authUrl+"oauth/token", "application/json", bytes.NewBuffer(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to post token request: %w", err)
+		return nil, fmt.Errorf("post token: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, string(respBody))
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token status %d: %s", resp.StatusCode, string(b))
 	}
 
 	var result PenneoTokenResp
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode token response: %w", err)
+		return nil, fmt.Errorf("decode token: %w", err)
 	}
-
 	return &result, nil
 }
 
 func createWebhookSubscription(accessToken string) (*WebhookSubscriptionResp, error) {
-	// This is your backend's public URL that Penneo will call
-	webhookEndpoint := os.Getenv("PENNEO_WEBHOOK_ENDPOINT") // e.g. "https://yourdomain.com/api/penneo/webhook"
-
+	endpoint := os.Getenv("PENNEO_WEBHOOK_ENDPOINT")
 	reqBody := WebhookSubscriptionReq{
-		EventTypes: []string{
-			"sign.casefile.completed",
-			"sign.signer.signed",
-		},
-		Endpoint: webhookEndpoint,
+		EventTypes: []string{"sign.casefile.completed", "sign.signer.signed"},
+		Endpoint:   endpoint,
 	}
+	body, _ := json.Marshal(reqBody)
 
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal webhook subscription request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", baseUrl+"webhook/api/v1/subscriptions", bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create webhook subscription request: %w", err)
-	}
+	req, _ := http.NewRequest("POST", baseUrl+"webhook/api/v1/subscriptions", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Auth-Token", accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create webhook subscription: %w", err)
+		return nil, fmt.Errorf("webhook sub: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// 409 means subscription already exists for this endpoint, which is fine
-	// we just return nil and continue — Penneo will still fire events to our endpoint
 	if resp.StatusCode == http.StatusConflict {
-		fmt.Println("Webhook subscription already exists, reusing existing subscription")
-		return nil, nil
+		return nil, nil // already exists
 	}
-
 	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("webhook subscription failed with status %d: %s", resp.StatusCode, string(respBody))
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("webhook sub status %d: %s", resp.StatusCode, string(b))
 	}
 
 	var result WebhookSubscriptionResp
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode webhook subscription response: %w", err)
+		return nil, fmt.Errorf("decode webhook: %w", err)
 	}
-	// TODO: Store in DB
-	// Store the secret for later HMAC verification of incoming webhook calls
-	// In production store this in your DB tied to the subscription ID
-	os.Setenv("PENNEO_WEBHOOK_SECRET", result.Secret)
-
+	os.Setenv("PENNEO_WEBHOOK_SECRET", result.Secret) // TODO: persist in DB
 	return &result, nil
 }
 
 func sendCaseFile(accessToken string) (*PenneoJobState, error) {
-
 	documentTitle := "Contract Document"
 	documentName := "contract.pdf"
-	documentPath := "./static/penneo_docs/"
+	documentDir := "./static/penneo_docs/"
 
-	filepath := filepath.Join(documentPath, documentName)
-	file, err := os.Open(filepath)
+	fullPath := filepath.Join(documentDir, documentName)
+	file, err := os.Open(fullPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open document: %w", err)
+		return nil, fmt.Errorf("open doc: %w", err)
 	}
 	defer file.Close()
 
@@ -297,240 +323,378 @@ func sendCaseFile(accessToken string) (*PenneoJobState, error) {
 		"caseFile": map[string]interface{}{
 			"title": "Contract Agreement",
 			"signers": []map[string]interface{}{
-				{
-					"name":  "Markus kjeldsen",
-					"email": "mkk@mop.dk",
-					"role":  "signer",
-				},
+				{"name": "Markus kjeldsen", "email": "mkk@mop.dk", "role": "signer"},
 			},
 			"documents": []map[string]interface{}{
-				{
-					"title": documentTitle,
-					"name":  documentName,
-				},
+				{"title": documentTitle, "name": documentName},
 			},
 		},
 	}
-
-	caseFileJSON, err := json.Marshal(casefileData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal casefile data %w", err)
-	}
+	caseFileJSON, _ := json.Marshal(casefileData)
 
 	dataField, err := writer.CreateFormField("data")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create formfield: %w", err)
+		return nil, fmt.Errorf("form field: %w", err)
 	}
-	dataField.Write(caseFileJSON)
+	if _, err := dataField.Write(caseFileJSON); err != nil {
+		return nil, fmt.Errorf("write data: %w", err)
+	}
 
 	filePart, err := writer.CreateFormFile("files", documentName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
+		return nil, fmt.Errorf("form file: %w", err)
 	}
 	if _, err := io.Copy(filePart, file); err != nil {
-		return nil, fmt.Errorf("failed to copy file contents: %w", err)
+		return nil, fmt.Errorf("copy file: %w", err)
 	}
-
 	writer.Close()
 
-	req, err := http.NewRequest("POST", baseUrl+"send/api/v1/casefiles/20251022/create", &buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create casefile request: %w", err)
-	}
+	//templateID := os.Getenv("PENNEO_TEMPLATE_ID")
+	//if templateID == "" {
+	//	return nil, fmt.Errorf("PENNEO_TEMPLATE_ID not set")
+	//}
+	req, _ := http.NewRequest("POST", baseUrl+"send/api/v1/casefiles/20251022/create", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("X-Auth-Token", accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send casefile: %w", err)
+		return nil, fmt.Errorf("send casefile: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("casefile request failed with status %d: %s", resp.StatusCode, string(respBody))
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("casefile status %d: %s", resp.StatusCode, string(b))
 	}
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode casefile response: %w", err)
+		return nil, fmt.Errorf("decode casefile: %w", err)
 	}
 
-	jobs, ok := result["jobs"].(map[string]interface{})
+	// jobs is array not map
+	jobs, ok := result["jobs"].([]interface{})
+	if !ok || len(jobs) == 0 {
+		return nil, fmt.Errorf("missing jobs")
+	}
+	job, ok := jobs[0].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("unexpected response format, missing jobs field")
+		return nil, fmt.Errorf("invalid job format")
 	}
-
-	uuid, _ := jobs["uuid"].(string)
-	payloadHash, _ := jobs["payloadHash"].(string)
-
+	uuid, _ := job["uuid"].(string)
+	payloadHash, _ := job["payloadHash"].(string)
 	if uuid == "" || payloadHash == "" {
-		return nil, fmt.Errorf("missing uuid: %s or payloadHash: %s", uuid, payloadHash)
+		return nil, fmt.Errorf("missing uuid/payloadHash")
 	}
-
-	return &PenneoJobState{
-		UUID:        uuid,
-		PayloadHash: payloadHash,
-		AccessToken: accessToken,
-	}, nil
+	return &PenneoJobState{UUID: uuid, PayloadHash: payloadHash, AccessToken: accessToken}, nil
 }
 
 func pollJobStatus(state *PenneoJobState) (string, error) {
-	reqBody := JobStatusReq{
-		UUID:        state.UUID,
-		PayloadHash: state.PayloadHash,
-	}
-
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal job status request: %w", err)
-	}
-
+	body, _ := json.Marshal(JobStatusReq{UUID: state.UUID, PayloadHash: state.PayloadHash})
 	client := &http.Client{}
 
-	// Try up to 12 times with 5 second gaps = max 60 seconds of waiting.
-	// If the job isnt done by then, something is probably wrong.
 	for i := 0; i < 12; i++ {
-		req, err := http.NewRequest("GET", baseUrl+"api/v1/jobs/status", bytes.NewBuffer(body))
-		if err != nil {
-			return "", fmt.Errorf("failed to create job status request: %w", err)
-		}
+		req, _ := http.NewRequest("POST", baseUrl+"send/api/v1/queue/public/status", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Auth-Token", state.AccessToken)
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return "", fmt.Errorf("failed to get job status: %w", err)
+			return "", fmt.Errorf("job status: %w", err)
 		}
-
-		var result JobStatusResp
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			return "", fmt.Errorf("failed to decode job status response: %w", err)
+			return "", fmt.Errorf("job status %d: %s", resp.StatusCode, string(b))
 		}
+		var result JobStatusResp
+		err = json.NewDecoder(resp.Body).Decode(&result)
 		resp.Body.Close()
+		if err != nil {
+			return "", fmt.Errorf("decode job: %w", err)
+		}
 
 		if result.JobStatus == "completed" {
-			caseFileID := result.Result.Data.CaseFile.ID
-			if caseFileID == "" {
-				return "", fmt.Errorf("job completed but caseFileId is empty")
+			id := result.Result.Data.CaseFile.ID
+			if id == 0 {
+				return "", fmt.Errorf("empty caseFileId")
 			}
-			return caseFileID, nil
+			return fmt.Sprintf("%d", id), nil
 		}
-
-		// Wait 5 seconds before trying again.
-		// time.Sleep blocks the current goroutine (not the whole server).
-		time.Sleep(5 * time.Second)
+		time.Sleep(500 * time.Millisecond)
+		// they generate these things almost instantly so if the first one fails,
+		// then by the time it takes to decode, it could be done
 	}
-
-	return "", fmt.Errorf("job polling timed out after 1 minute")
+	return "", fmt.Errorf("job poll timeout")
 }
 
-func getCaseFileDocuments(accessToken, caseFileID string) (string, error) {
-	req, err := http.NewRequest("GET", baseUrl+"api/v1/casefiles/"+caseFileID, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create casefile request: %w", err)
-	}
+// fetchCaseFileStatus — used for fallback polling + verifying webhook
+func fetchCaseFileStatus(accessToken, caseFileID string, retry bool) (*CaseFileResp, string, error) {
+	req, _ := http.NewRequest("GET", baseUrl+"api/v1/casefiles/"+caseFileID, nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to get casefile: %w", err)
+		return nil, accessToken, err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusUnauthorized && retry {
+		token, err := getAccessToken()
+		if err != nil {
+			return nil, accessToken, err
+		}
+		// Try once more with new token
+		return fetchCaseFileStatus(token.AccessToken, caseFileID, false)
+	}
+
+	// 3. Handle other errors
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, accessToken, fmt.Errorf("status %d: %s", resp.StatusCode, string(b))
+	}
+
 	var result CaseFileResp
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode casefile response: %w", err)
+		return nil, accessToken, err
 	}
-
-	if len(result.Documents) == 0 {
-		return "", fmt.Errorf("no documents found in casefile")
-	}
-
-	// Return the first document's ID.
-	// TODO: FIX MULTIPLE DOCUMENT IDs
-	// If there are multiple documents, you may need to handle that differently.
-	return result.Documents[0].DocumentID, nil
+	return &result, accessToken, nil
 }
 
-func getSignedDocument(accessToken, documentID string) ([]byte, error) {
-	req, err := http.NewRequest("GET", baseUrl+"api/v3/documents/"+documentID+"/content", nil)
+func getSignedDocument(accessToken string, documentID int) ([]byte, error) {
+	u := fmt.Sprintf("https://app.penneo.com/api/v3/documents/%d/content", documentID)
+
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create document content request: %w", err)
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/pdf")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get signed document: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("document content request failed with status %d: %s", resp.StatusCode, string(respBody))
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("penneo documents/%d/content: status %d: %s", documentID, resp.StatusCode, body)
 	}
 
-	pdfBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read document content: %w", err)
-	}
-
-	return pdfBytes, nil
+	return io.ReadAll(resp.Body)
 }
 
 // =====================
-// GIN HANDLER: START PENNEO FLOW
+// BACKGROUND WORKER
+// Waits for signed event (webhook or poll fallback), fetches PDF, uploads.
 // =====================
 
-func StartPenneoFlow(c *gin.Context) {
-	// Step 1: Get access token
-	tokenResp, err := getAccessToken(c)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get access token", "details": err.Error()})
+func waitForSigningAndProcess(accessToken, caseFileID string) {
+	defer pending.Remove(caseFileID)
+
+	job := pending.Add(caseFileID)
+	hub.Notify(caseFileID, `{"status":"awaiting_signature"}`)
+
+	// Wait: webhook signals OR fallback poll every min OR hard timeout
+	timeout := time.After(2 * time.Hour) // if they havent
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	signed := false
+	status := 0
+WaitLoop:
+	for {
+		select {
+		case <-job.signed:
+			signed = true
+			break WaitLoop
+		case <-ticker.C:
+			// Fallback poll — covers missed webhooks
+			cf, newTok, err := fetchCaseFileStatus(accessToken, caseFileID, true)
+			accessToken = newTok
+			if err != nil {
+				log.Printf("[penneo] poll err %s: %v", caseFileID, err)
+				continue
+			}
+			status = cf.Status
+			switch cf.Status {
+			case 5: // Completed
+				signed = true
+				break WaitLoop
+			case 2: // Rejected
+				hub.Notify(caseFileID, `{"status":"rejected"}`)
+				break WaitLoop
+			case 3: // Deleted
+				hub.Notify(caseFileID, `{"status":"deleted"}`)
+				return
+			case 7: // Expired
+				hub.Notify(caseFileID, `{"status":"expired"}`)
+				return
+			}
+
+		case <-timeout:
+			log.Printf("[penneo] timeout waiting %s", caseFileID)
+			hub.Notify(caseFileID, `{"status":"timeout"}`)
+			return
+		}
+	}
+
+	if !signed {
+		// TODO: implement what should happen if the person dosnt want to sign the doc
+		switch status {
+		case 0:
+			fmt.Println("Something went wrong, the status came back 0 draft")
+		case 1:
+			fmt.Println("Something went wrong, the status came back 1 Pending")
+		case 2:
+			fmt.Println("The status came back 2 rejected, i guess the debitor didnt like the visit")
+		case 3:
+			fmt.Println("The file was deleted, status 3")
+		case 5:
+			fmt.Println("This should not happen, that it is completed and not signed, status 5")
+		case 7:
+			fmt.Println("if this happens then penneo has changed their experiation time, status 7")
+		}
 		return
 	}
 
-	// Step 2: Send casefile
+	hub.Notify(caseFileID, `{"status":"signed"}`)
+
+	cf, newTok, err := fetchCaseFileStatus(accessToken, caseFileID, true)
+	accessToken = newTok
+	if err != nil || len(cf.Documents) == 0 {
+		log.Printf("[penneo] fetch docs failed %s: %v", caseFileID, err)
+		hub.Notify(caseFileID, `{"status":"error","message":"fetch documents failed"}`)
+		return
+	}
+
+	pdfBytes, err := getSignedDocument(accessToken, cf.Documents[0].ID)
+	if err != nil {
+		log.Printf("[penneo] get pdf failed %s: %v", caseFileID, err)
+		hub.Notify(caseFileID, `{"status":"error","message":"get pdf failed"}`)
+		return
+	}
+
+	// TODO: Advoproupload(pdfbytes)
+
+	fmt.Println("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
+	hub.Notify(caseFileID, fmt.Sprintf(`{"status":"completed","documentId":%d,"size":%d}`, cf.Documents[0].ID, len(pdfBytes)))
+}
+
+// =====================
+// HANDLERS
+// =====================
+
+// POST /penneo/start — kicks off flow, returns caseFileId fast
+func StartPenneoFlow(c *gin.Context) {
+	tokenResp, err := getAccessToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token", "details": err.Error()})
+		return
+	}
+
 	jobState, err := sendCaseFile(tokenResp.AccessToken)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send casefile", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "send casefile", "details": err.Error()})
 		return
 	}
 
-	// Step 3: Poll job until completed, get caseFileId
 	caseFileID, err := pollJobStatus(jobState)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to poll job status", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "poll job", "details": err.Error()})
 		return
 	}
 
-	// Step 4: Poll casefile until signed, get documentId
-	// the wrong func
-	documentID, err := pollJobStatus(jobState) // , caseFileID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to poll casefile signing", "details": err.Error()})
-		return
-	}
-
-	// Step 5: Get signed PDF bytes
-	pdfBytes, err := getSignedDocument(tokenResp.AccessToken, documentID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get signed document", "details": err.Error()})
-		return
-	}
-
-	// TODO: Send pdfBytes to AdvoPro integration
-	// uploadToAdvoPro(pdfBytes)
+	// Spawn background waiter
+	go waitForSigningAndProcess(tokenResp.AccessToken, caseFileID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Penneo flow completed successfully",
+		"message":    "Penneo flow started, awaiting signature",
 		"caseFileId": caseFileID,
-		"documentId": documentID,
-		"pdfSize":    len(pdfBytes),
+		"sseUrl":     "/penneo/events/" + caseFileID,
 	})
+}
+
+// POST /penneo/webhook — Penneo calls this on sign events
+func PenneoWebhook(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "read body"})
+		return
+	}
+
+	// HMAC verify
+	secret := os.Getenv("PENNEO_WEBHOOK_SECRET")
+	sig := c.GetHeader("X-Penneo-Signature")
+	if secret != "" && sig != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(body)
+		expected := hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(expected), []byte(sig)) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "bad signature"})
+			return
+		}
+	}
+
+	var ev PenneoWebhookEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad json"})
+		return
+	}
+
+	log.Printf("[penneo webhook] %s for %s", ev.EventType, ev.CaseFileID)
+
+	if ev.EventType == "sign.casefile.completed" {
+		pending.SignalSigned(ev.CaseFileID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"received": true})
+}
+
+// GET /penneo/events/:caseFileId — SSE stream for frontend
+func PenneoSSE(c *gin.Context) {
+	caseFileID := c.Param("caseFileId")
+	if caseFileID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing caseFileId"})
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	client := hub.Register(caseFileID)
+	defer hub.Unregister(caseFileID, client)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming unsupported"})
+		return
+	}
+
+	// Initial ping
+	fmt.Fprintf(c.Writer, "event: ping\ndata: connected\n\n")
+	flusher.Flush()
+
+	keepalive := time.NewTicker(20 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case msg, ok := <-client.Channel:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
+			flusher.Flush()
+		case <-keepalive.C:
+			fmt.Fprintf(c.Writer, ": keepalive\n\n")
+			flusher.Flush()
+		case <-c.Request.Context().Done():
+			return
+		}
+	}
 }
