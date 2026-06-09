@@ -97,7 +97,7 @@ func isLocalIP(ip net.IP) bool {
 
 func isBannedIP(ip net.IP) bool {
 	var attempt models.AuthAttempt
-	initializers.DB.First(&attempt).Where("ip = ? AND created_at > ?", ip, time.Now().Add(-12*time.Hour))
+	initializers.DB.Where("ip = ? AND created_at > ?", ip.String(), time.Now().Add(-12*time.Hour)).First(&attempt)
 	return attempt.ID != 0 // if id is not zero then its banned
 }
 
