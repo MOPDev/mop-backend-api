@@ -85,10 +85,10 @@ type LoginAttempt struct {
 	UpdatedAt     time.Time
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 	UserID        uint           `json:"user_id" gorm:"not null,index:idx_user_created,priority:1"`
-	Username      string         `json:"username" gorm:"not null,index:idx_ip_created,priority:1"`
-	IP            string         `gorm:"size:45;not null"`
+	Username      string         `gorm:"not null;index:idx_username_created,priority:1"`
+	IP            string         `gorm:"size:45;not null;index:idx_ip_created,priority:1"`
 	Successful    bool           `gorm:"not null"`
-	FailureReason string         `json:"failure_reason"`
+	FailureReason string
 }
 
 type Debitor struct {

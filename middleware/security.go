@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,16 @@ import (
 type BodyLogin struct {
 	Username string `json:"username" form:"username" binding:"required"`
 	Password string `json:"password" form:"password" binding:"required"`
+}
+
+func LoginLogCleanup() {
+	go func() {
+		t := time.NewTicker(6 * time.Hour)
+		for range t.C {
+			initializers.DB.Where("created_at < ?", time.Now().Add(-7*24*time.Hour)).
+				Delete(&models.LoginAttempt{})
+		}
+	}()
 }
 
 func LoginAttemptLog(c *gin.Context) {
@@ -70,29 +81,7 @@ func LoginAttemptLog(c *gin.Context) {
 }
 
 func isLocalIP(ip net.IP) bool {
-	// Loopback
-	//strIp := ip.To4()
-	//fmt.Println(strIp)
-	if ip.IsLoopback() {
-		return true
-	}
-	// IPv4: 10.0.0.0/8
-	if ip.To4() != nil && ip[0] == 10 {
-		return true
-	}
-	// IPv4: 192.168.0.0/16
-	if ip.To4() != nil && ip[0] == 192 && ip[1] == 168 {
-		return true
-	}
-	// IPv4: 172.16.0.0/12
-	if ip.To4() != nil && ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
-		return true
-	}
-	// IPv6 Unique local
-	if ip.IsPrivate() { // Go 1.17+
-		return true
-	}
-	return false
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
 
 func isBannedIP(ip net.IP) bool {
@@ -102,7 +91,10 @@ func isBannedIP(ip net.IP) bool {
 }
 
 func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
-	db, _ := geoip2.Open(dbFile)
+	db, err := geoip2.Open(dbFile)
+	if err != nil {
+		log.Fatalf("GeoIPBlocker: failed to open %s: %v", dbFile, err)
+	}
 	return func(c *gin.Context) {
 		ip := net.ParseIP(c.ClientIP())
 		if (os.Getenv("PRODUCTION")) != "True" && len(c.GetHeader("REAL-IP")) > 4 {
@@ -122,8 +114,12 @@ func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(500, gin.H{"error": "geo lookup failed"})
 			return
 		}
-		if record == nil || record.Country.IsoCode != allowedCountry {
-			name := record.Country.Names["en"] // or pick from Accept-Language
+		if record == nil {
+			c.AbortWithStatusJSON(403, gin.H{"error": "Access forbidden"})
+			return
+		}
+		if record.Country.IsoCode != allowedCountry {
+			name := record.Country.Names["en"]
 			if name == "" {
 				name = record.Country.IsoCode
 			}

@@ -17,6 +17,7 @@ func init() {
 	// Load environment variables and connect to the database
 	initializers.LoadEnvVariables()
 	initializers.ConnectToDB()
+	middleware.LoginLogCleanup()
 }
 
 func main() {

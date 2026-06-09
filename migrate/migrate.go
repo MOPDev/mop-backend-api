@@ -93,6 +93,7 @@ func migrateTables() {
 		fmt.Println(err.Error())
 		return
 	}
+
 	fmt.Println("Migration went well")
 }
 
