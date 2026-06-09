@@ -397,27 +397,35 @@ func DebtInformation(c *gin.Context) {
 		return
 	}
 
-	// GET THE CORRECT FILE
-	filepath := "./word_document.docx"
-	c.Header("Content-Disposition", "inline; filename=debt_info.docx")
+	// GET THE CORRECT FILE, get the AktivitetsRapporten
+	filepath, err := internal.GetAktivitetsrapporten(visitID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set the filename for the browser download
+	downloadName := "aktivitetsrapport.docx"
+
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s", downloadName))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 	c.File(filepath)
-	fmt.Println("debt info called")
-
-	/*
-		data, err := internal.CurrentDebtCase(visit.Sagsnr)
-		// if an error occurs then just dont send any info
-		if err != nil {
-			fmt.Println(err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, data)
-	*/
 }
+
+/*
+	data, err := internal.CurrentDebtCase(visit.Sagsnr)
+	// if an error occurs then just dont send any info
+	if err != nil {
+		fmt.Println(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, data)
+*/
 
 func DeleteVisit(c *gin.Context) {
 	dataid := c.Query("id")
