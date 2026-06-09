@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markuskjeldsen/mop-backend-api/initializers"
-	"github.com/markuskjeldsen/mop-backend-api/models"
+	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/models"
 	"golang.org/x/crypto/bcrypt"
 )
 

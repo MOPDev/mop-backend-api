@@ -1,4 +1,4 @@
-module github.com/markuskjeldsen/mop-backend-api
+module github.com/MOPDev/mop-backend-api
 
 go 1.24.2
 

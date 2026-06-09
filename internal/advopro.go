@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/models"
 	_ "github.com/denisenkom/go-mssqldb"
-	"github.com/markuskjeldsen/mop-backend-api/initializers"
-	"github.com/markuskjeldsen/mop-backend-api/models"
 )
 
 type AdvoProCaseData struct {

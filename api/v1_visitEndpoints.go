@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal"
+	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
-	"github.com/markuskjeldsen/mop-backend-api/initializers"
-	"github.com/markuskjeldsen/mop-backend-api/internal"
-	"github.com/markuskjeldsen/mop-backend-api/models"
 	"gorm.io/gorm"
 )
 

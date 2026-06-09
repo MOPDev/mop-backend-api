@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
-	"github.com/markuskjeldsen/mop-backend-api/models"
 )
 
 func RequestLogger() gin.HandlerFunc {

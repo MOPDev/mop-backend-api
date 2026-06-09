@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/markuskjeldsen/mop-backend-api/initializers"
-	"github.com/markuskjeldsen/mop-backend-api/models"
 	fpdf "github.com/phpdave11/gofpdf"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"

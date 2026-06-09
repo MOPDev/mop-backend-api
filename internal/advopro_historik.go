@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/markuskjeldsen/mop-backend-api/models"
+	"github.com/MOPDev/mop-backend-api/models"
 )
 
 // ─── Data Structure ───────────────────────────────────────────────────────────
