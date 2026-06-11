@@ -344,3 +344,32 @@ func GetAktivitetsrapporten(visitId uint64) (string, error) {
 
 	return finalPath, nil
 }
+
+func UploadDocument(srcPath string, sagsnr uint64, title string) error {
+	// check if file exists
+	if _, err := os.Stat(srcPath); err != nil {
+		return fmt.Errorf("cant find file at %s: %w", srcPath, err)
+	}
+
+	// TODO: REMOVE BEFORE PROD
+	sagsnr = 430415 // jens advokado (test case)
+
+	//title := strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath))
+
+	res, err := ImportDocument(
+		srcPath,
+		title,
+		sagsnr,
+		0,     // empID -> default 185
+		"",    // user  -> default AUTO_IMPORT
+		"",    // destFolder -> auto-detect
+		false, // dryRun
+	)
+	if err != nil {
+		return fmt.Errorf("upload failed: %w", err)
+	}
+
+	fmt.Printf("Uploaded document: dok_id=%d version_id=%d forsendelse_id=%d\n",
+		res.DokID, res.VersionID, res.ForsendelseID)
+	return nil
+}
