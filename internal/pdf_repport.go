@@ -41,7 +41,7 @@ func SaveFile(c *gin.Context, file *multipart.FileHeader) (string, error) {
 	return filepath, nil
 }
 
-func addImageFit(pdf *fpdf.Fpdf, path string) {
+func addImageFit(pdf *fpdf.Fpdf, path string) error {
 	// Page size, margins, cursor
 	pw, ph := pdf.GetPageSize()
 	lm, _, rm, _ := pdf.GetMargins()
@@ -58,6 +58,10 @@ func addImageFit(pdf *fpdf.Fpdf, path string) {
 		y = pdf.GetY()
 		maxH = ph - bm - y
 	}
+	// is image there?
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("cant find image at %s: %w", path, err)
+	}
 
 	// Image natural size (respect DPI)
 	info := pdf.RegisterImageOptions(path, fpdf.ImageOptions{ReadDpi: true})
@@ -69,6 +73,7 @@ func addImageFit(pdf *fpdf.Fpdf, path string) {
 	// Draw
 	pdf.ImageOptions(path, lm, y, w, h, false, fpdf.ImageOptions{ReadDpi: true}, 0, "")
 	pdf.SetY(y + h + 2) // move cursor below image
+	return nil
 }
 
 func pdfwrite(pdf *fpdf.Fpdf, message string) {
@@ -501,7 +506,7 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 
 }
 
-func pdfGenerate(pdf *fpdf.Fpdf, v models.Visit) {
+func pdfGenerate(pdf *fpdf.Fpdf, v models.Visit) error {
 	pdf.SetAutoPageBreak(false, 15)
 	pdf.AddUTF8Font("Roboto", "", "./static/Roboto-light.ttf")
 	pdf.AddUTF8Font("Roboto", "B", "./static/Roboto-Bold.ttf")
@@ -524,9 +529,12 @@ func pdfGenerate(pdf *fpdf.Fpdf, v models.Visit) {
 	// til slut billederne
 	for _, image := range v.VisitResponse.Images {
 		pdf.AddPage()
-		addImageFit(pdf, image.ImagePath)
+		err := addImageFit(pdf, image.ImagePath)
+		if err != nil {
+			return fmt.Errorf("An error occurred when putting in images: %w", err)
+		}
 	}
-
+	return nil
 }
 
 func GeneratePDFVisit(visitID uint) ([]byte, error) {
@@ -545,11 +553,17 @@ func GeneratePDFVisit(visitID uint) ([]byte, error) {
 
 	//PdfReport(pdfBuf, visit)
 	//PdfReport(pdfFile, visit)
-	pdfGenerate(pdfBuf, visit)
-	pdfGenerate(pdfFile, visit)
+	err := pdfGenerate(pdfBuf, visit)
+	if err != nil {
+		return nil, err
+	}
+	err = pdfGenerate(pdfFile, visit)
+	if err != nil {
+		return nil, err
+	}
 
 	var buf bytes.Buffer
-	err := pdfBuf.Output(&buf)
+	err = pdfBuf.Output(&buf)
 	if err != nil {
 		log.Printf("error outputting PDF to buffer: %v", err)
 		return nil, err
