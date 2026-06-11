@@ -579,7 +579,7 @@ WaitLoop:
 
 	// TODO: Advoproupload(pdfbytes)
 
-	fmt.Println("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
+	fmt.Printf("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
 	hub.Notify(caseFileID, fmt.Sprintf(`{"status":"completed","documentId":%d,"size":%d}`, cf.Documents[0].ID, len(pdfBytes)))
 }
 

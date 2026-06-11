@@ -353,8 +353,6 @@ func UploadDocument(srcPath string, sagsnr uint64, title string) error {
 
 	// sagsnr = 430415 // jens advokado (test case)
 
-	//title := strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath))
-
 	res, err := ImportDocument(
 		srcPath,
 		title,

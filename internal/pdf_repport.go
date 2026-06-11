@@ -76,18 +76,6 @@ func addImageFit(pdf *fpdf.Fpdf, path string) error {
 	return nil
 }
 
-func pdfwrite(pdf *fpdf.Fpdf, message string) {
-	const desiredWidth = 180.0 // Adjust this value based on your PDF layout (e.g., page width minus margins)
-	const lineHeight = 10.0    // Height of each line of text
-
-	// Use MultiCell for automatic text wrapping.
-	// Parameters: width, line_height, text, border_flags (0 for no border), align ("L" for left), fill (false for no fill)
-	pdf.MultiCell(desiredWidth, lineHeight, message, "0", "L", false)
-
-	// MultiCell automatically advances the Y position to the line after the last text line.
-	// pdf.Ln() is not usually needed directly after MultiCell unless you want extra spacing.
-}
-
 // Helper to handle optional numbers (uint)
 func optionalUintToStr(val *uint) string {
 	if val == nil {
@@ -105,45 +93,6 @@ func optionalMoneyToStr(val *float32) string {
 	return p.Sprintf("%.2f kr", *val)
 }
 
-// Optional string formatter (just checks for empty string)
-func formatStr(val string) string {
-	if val == "" {
-		return "-"
-	}
-	return val
-}
-
-func floatToDKKmoney(number float32) string {
-	p := message.NewPrinter(language.Danish)
-	return p.Sprintf("%.2f kr", number)
-}
-func write(pdf *fpdf.Fpdf, x, y float64, txt string) {
-	pdf.SetXY(x, y)
-	pdf.CellFormat(0, 5, txt, "", 0, "", false, 0, "")
-}
-func field(pdf *fpdf.Fpdf, label string, value string) {
-	pdf.CellFormat(40, 6, label, "", 0, "", false, 0, "")
-	pdf.CellFormat(80, 6, value, "", 1, "", false, 0, "")
-}
-func checkbox(pdf *fpdf.Fpdf, checked bool, label string) {
-	boxSize := 4.0
-
-	x, y := pdf.GetXY()
-
-	// label
-	pdf.CellFormat(15, 6, label, "", 0, "", false, 0, "")
-
-	// draw box
-	pdf.Rect(x+30, y+1, boxSize, boxSize, "D")
-
-	// mark if checked
-	if checked {
-		pdf.SetXY(x+30, y+0.5)
-		pdf.CellFormat(boxSize, 6, "X", "", 0, "C", false, 0, "")
-	}
-
-}
-
 func optionalBoolToStr(val *bool) string {
 	if val == nil {
 		return "-" // Or "Ingen data"
@@ -152,14 +101,6 @@ func optionalBoolToStr(val *bool) string {
 		return "JA"
 	}
 	return "NEJ"
-}
-
-func boolToString(value bool) string {
-	if value {
-		return "JA"
-	} else {
-		return "NEJ"
-	}
 }
 
 func questionRow(pdf *fpdf.Fpdf, label string, answer string, details string) {
