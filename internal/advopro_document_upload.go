@@ -98,6 +98,12 @@ type ImportResult struct {
 //   - destFolder: override storage path (Windows-style). If empty, auto-detect.
 //   - dryRun: rolls back the transaction instead of committing.
 func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, destFolder string, dryRun bool) (*ImportResult, error) {
+
+	// NOTE: We deliberately use two separate short-lived DB connections here.
+	// Phase 1 resolves pre-checks, Phase 2 handles the transaction.
+	// This avoids holding a connection open during potentially slow file operations
+	// (PDF generation, network share copy), which was causing i/o timeout on commit.
+
 	const defaultEmpID = 185
 	const defaultUser = "AUTO_IMPORT"
 	if empID == 0 {
@@ -110,36 +116,40 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 	ext := filepath.Ext(srcFilePath)
 	uniqueName := uuid.New().String() + ext
 
-	db, err := openAdvoPro()
+	// --- Phase 1: Pre-checks (short-lived connection) ---
+	db1, err := openAdvoPro()
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
-	// Idempotency guard: skip if a doc with this title already exists on the case.
-	exists, err := documentExists(db, sagsnr, title)
+	// Idempotency guard
+	exists, err := documentExists(db1, sagsnr, title)
 	if err != nil {
+		db1.Close()
 		return nil, err
 	}
 	if exists {
+		db1.Close()
 		return nil, errors.New("document already exists on case")
-
 	}
 
-	// --- Resolve storage path (Windows-style, stored in DB) ---
+	// Resolve storage path
 	if destFolder == "" {
-		destFolder, err = getCasePath(db, sagsnr)
+		destFolder, err = getCasePath(db1, sagsnr)
 		if err != nil {
+			db1.Close()
 			return nil, fmt.Errorf("failed to resolve case path: %w", err)
 		}
 		if destFolder == "" {
-			// Fallback path matching the Python default
 			destFolder = `\\MOPSRV01\AdvoPro\Opgaver\Jurist\AutoImport\` + strconv.FormatUint(sagsnr, 10)
 		}
 	}
+	db1.Close() // Done with pre-checks, release connection
+	// --- End Phase 1 ---
+
 	dbPath := strings.TrimRight(destFolder, "\\")
 
-	// --- Translate to a locally-writable path for the file copy ---
+	// --- File operations (no DB connection held) ---
 	localFolder := winPathToLocal(dbPath)
 	if _, err := os.Stat(localFolder); os.IsNotExist(err) {
 		if err := os.MkdirAll(localFolder, 0o755); err != nil {
@@ -147,18 +157,24 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 		}
 	}
 
-	// --- Copy the file ---
 	localDest := filepath.Join(localFolder, uniqueName)
 	if err := copyFile(srcFilePath, localDest); err != nil {
 		return nil, fmt.Errorf("failed to copy file: %w", err)
 	}
 
-	// Helper to clean up the copied file on failure / dry-run
 	cleanupFile := func() {
 		if _, statErr := os.Stat(localDest); statErr == nil {
 			_ = os.Remove(localDest)
 		}
 	}
+
+	// --- Phase 2: Fresh connection just for the transaction ---
+	db, err := openAdvoPro()
+	if err != nil {
+		cleanupFile()
+		return nil, err
+	}
+	defer db.Close()
 
 	// --- Begin transaction ---
 	tx, err := db.Begin()
