@@ -351,8 +351,7 @@ func UploadDocument(srcPath string, sagsnr uint64, title string) error {
 		return fmt.Errorf("cant find file at %s: %w", srcPath, err)
 	}
 
-	// TODO: REMOVE BEFORE PROD
-	sagsnr = 430415 // jens advokado (test case)
+	// sagsnr = 430415 // jens advokado (test case)
 
 	//title := strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath))
 
