@@ -66,7 +66,7 @@ type User struct {
 	Initials string     `json:"initials" gorm:"not null,default:''"`
 	Name     string     `json:"name" binding:"required" gorm:"not null;uniqueIndex:ux_users_name_active,where:deleted_at IS NULL"`
 	Username string     `json:"username" binding:"required" gorm:"not null;uniqueIndex:ux_users_username_active,where:deleted_at IS NULL"`
-	Password string     `json:"password" binding:"required" gorm:"not null"`
+	Password string     `json:"-" binding:"required" gorm:"not null"`
 	Rights   UserRights `json:"rights" gorm:"default:user"`
 	Email    string     `json:"email"`
 	Phone    string     `json:"phone"`

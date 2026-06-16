@@ -12,6 +12,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/oschwald/geoip2-golang"
+	"gorm.io/gorm"
 )
 
 type BodyLogin struct {
@@ -58,16 +59,7 @@ func LoginAttemptLog(c *gin.Context) {
 	attempt.Successful = false
 	attempt.FailureReason = "Failed to bind values"
 
-	var userCount, ipCount int64
-	initializers.DB.Model(&models.LoginAttempt{}).
-		Where("username = ?  AND created_at > ?", body.Username, time.Now().Add(-12*time.Hour)).
-		Count(&userCount)
-
-	initializers.DB.Model(&models.LoginAttempt{}).
-		Where("ip = ? AND created_at > ?", addr, time.Now().Add(-12*time.Hour)).
-		Count(&ipCount)
-
-	if userCount >= 20 || ipCount >= 30 {
+	if isRateLimited(initializers.DB, body.Username, addr) {
 		attempt.FailureReason = "Too many requests"
 		initializers.DB.Create(&attempt)
 		c.AbortWithStatus(http.StatusTooManyRequests)
@@ -78,6 +70,38 @@ func LoginAttemptLog(c *gin.Context) {
 	c.Set("attemptID", attempt.ID)
 	attempt.FailureReason = "Failed to bind values"
 	c.Next()
+}
+
+func isRateLimited(db *gorm.DB, username, ip string) bool {
+	// Each tier: {max_failures, window}
+	// Exponential: 5 fails/1min, 10/5min, 15/30min, 20/12hr
+	tiers := []struct {
+		limit  int64
+		window time.Duration
+	}{
+		{5, 1 * time.Minute},
+		{10, 5 * time.Minute},
+		{15, 30 * time.Minute},
+		{20, 12 * time.Hour},
+	}
+
+	for _, tier := range tiers {
+		var userCount, ipCount int64
+		since := time.Now().Add(-tier.window)
+
+		db.Model(&models.LoginAttempt{}).
+			Where("username = ? AND created_at > ?", username, since).
+			Count(&userCount)
+
+		db.Model(&models.LoginAttempt{}).
+			Where("ip = ? AND created_at > ?", ip, since).
+			Count(&ipCount)
+
+		if userCount >= tier.limit || ipCount >= int64(float64(tier.limit)*1.5) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLocalIP(ip net.IP) bool {
