@@ -109,10 +109,10 @@ func GetBesogsbrev(visitId uint64) ([]byte, error) {
 	if len(advoproResult) == 0 {
 		return nil, fmt.Errorf("There was no result from the database")
 	}
-	if len(advoproResult) > 0 {
-		// if more then one they should be the same, but just take the most recent which is the top one
-		fmt.Println("More then one besøgsbrev file for this case, using the latest")
-	}
+	//if len(advoproResult) > 0 { this warning dosnt matter
+	// if more then one they should be the same, but just take the most recent which is the top one
+	//	fmt.Println("More then one besøgsbrev file for this case, using the latest")
+	//}
 
 	winPlacering := toString(advoproResult[0]["Placering"]) // "\\MOPSRV01\AdvoPro\Opgaver\..."
 	winFilnavn := toString(advoproResult[0]["Filnavn"])     // "99999999.docx"
