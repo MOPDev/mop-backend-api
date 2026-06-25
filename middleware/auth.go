@@ -13,7 +13,7 @@ import (
 )
 
 func RequireAuthUser(c *gin.Context) {
-	//fmt.Println("auth middleware")
+	//fmt.Println("auth middleware") this is both auditor and office
 
 	// get cookie
 	tokenString, err := c.Cookie("Authorization")
