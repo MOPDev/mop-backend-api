@@ -426,11 +426,11 @@ func GetBesogsbrevHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	filename := "besogsbrev.docx"
 
-	// Send as downloadable docx - browser will open with Word/default app
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileBytes)
+	filename := "besogsbrev.pdf" // ← changed
+
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename)) // inline = opens in browser
+	c.Data(http.StatusOK, "application/pdf", fileBytes)                               // ← changed MIME type
 }
 
 /*
