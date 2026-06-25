@@ -413,6 +413,26 @@ func DebtInformation(c *gin.Context) {
 	c.File(filepath)
 }
 
+func GetBesogsbrevHandler(c *gin.Context) {
+	visitIdStr := c.Param("visitId")
+	visitId, err := strconv.ParseUint(visitIdStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid visit ID"})
+		return
+	}
+
+	fileBytes, err := internal.GetBesogsbrev(visitId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	filename := "besogsbrev.docx"
+
+	// Send as downloadable docx - browser will open with Word/default app
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileBytes)
+}
+
 /*
 	data, err := internal.CurrentDebtCase(visit.Sagsnr)
 	// if an error occurs then just dont send any info

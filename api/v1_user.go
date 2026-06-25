@@ -181,8 +181,13 @@ func Login(c *gin.Context) {
 		Update("failure_reason", "User does not exist")
 
 	var user models.User
-	fmt.Println("Username:", body.Username)
-	initializers.DB.First(&user, "username = ?", body.Username)
+	result := initializers.DB.First(&user, "username = ?", body.Username)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": result.Error.Error(),
+		})
+		return
+	}
 	if user.ID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "ERROR could find user",
