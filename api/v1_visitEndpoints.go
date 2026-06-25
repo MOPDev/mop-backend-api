@@ -217,7 +217,7 @@ func GetVisitsByStatus(c *gin.Context) {
 		return
 	}
 
-	if user.Rights != models.RightsAdmin && user.Rights != models.RightsDeveloper {
+	if user.Rights != models.RightsAdmin && user.Rights != models.RightsDeveloper && user.Rights != models.RightsOfficeWorker {
 		c.JSON(http.StatusForbidden, gin.H{})
 		return
 	}
