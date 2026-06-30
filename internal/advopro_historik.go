@@ -53,7 +53,7 @@ func openDB(server, database string) (*sql.DB, error) {
 	pass := os.Getenv("MSSQL_PASS")
 
 	connStr := fmt.Sprintf(
-		"server=%s;user id=%s;password=%s;database=%s;encrypt=true;TrustServerCertificate=true;port=1433;connection timeout=5",
+		"server=%s;user id=%s;password=%s;database=%s;encrypt=disable;TrustServerCertificate=true;port=1433;connection timeout=5",
 		server, user, pass, database,
 	)
 

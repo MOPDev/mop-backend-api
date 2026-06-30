@@ -40,6 +40,7 @@ func VisitPDF(c *gin.Context) {
 			"error": err.Error(),
 			"id":    visitID,
 		})
+		return
 	}
 	ok := internal.AddNoteToAdvopro(visitcheck)
 	if !ok {
@@ -47,7 +48,7 @@ func VisitPDF(c *gin.Context) {
 			"error": "Advopro integration went wrong",
 			"id":    visitcheck.Sagsnr,
 		})
-
+		return
 	}
 
 	var visit models.Visit
