@@ -99,7 +99,7 @@ func migrateTables() {
 }
 
 func resetPassword(id uint) {
-	logger.Infof("id:", id)
+	logger.Infof("id: %d", id)
 	if id == 1 {
 		logger.Info("This is the ID of the root, and should not be changed. Try another user")
 		return
@@ -109,7 +109,7 @@ func resetPassword(id uint) {
 	var user models.User
 	user.ID = uint(id)
 	initializers.DB.First(&user)
-	logger.Infof("name: ", user.Name)
+	logger.Infof("name: %s", user.Name)
 	logger.Info("confirm y/n: ")
 	var resp string
 	n, err := fmt.Scanf("%s", &resp)
