@@ -99,7 +99,7 @@ func migrateTables() {
 }
 
 func resetPassword(id uint) {
-	logger.Info("id:", id)
+	logger.Infof("id:", id)
 	if id == 1 {
 		logger.Info("This is the ID of the root, and should not be changed. Try another user")
 		return
