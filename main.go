@@ -79,7 +79,9 @@ func start_server() {
 		apiv1.GET("/visits/types", api.GetVisitTypes)
 		apiv1.GET("/visits/byId", middleware.RequireAuthUser, api.GetVisitsById)                 //query parameter
 		apiv1.GET("/visits/byStatus", middleware.RequireAuthOfficeWorker, api.GetVisitsByStatus) // query parameter
+		apiv1.GET("/visits/document", middleware.RequireAuthUser, api.AktivitersRapport)         // query parameter
 		apiv1.GET("/visits/debt", middleware.RequireAuthUser, api.DebtInformation)               // query parameter
+		//CurrentDebtCase
 		apiv1.DELETE("/visit/byId", middleware.RequireAuthOfficeWorker, api.DeleteVisit)
 
 		apiv1.GET("/visits/AvailableVisit", middleware.RequireAuthOfficeWorker, api.AvailableVisitCreation) // gets visits that can be created

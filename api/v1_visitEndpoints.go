@@ -383,6 +383,35 @@ func UploadVisitImage(c *gin.Context) {
 	c.JSON(http.StatusOK, image)
 }
 
+func AktivitersRapport(c *gin.Context) {
+	visitIDdata := c.Query("VisitId")
+	visitID, _ := strconv.ParseUint(visitIDdata, 10, 64)
+
+	var visit models.Visit
+	result := initializers.DB.First(&visit, visitID)
+	if result.Error != nil {
+		fmt.Println(result.Error.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+
+	filepath, err := internal.GetAktivitetsrapporten(visitID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	pdfPath, err := internal.ConvertDocxToPdf(filepath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", "inline; filename=aktivitetsrapport.pdf")
+	c.Header("Content-Type", "application/pdf")
+	c.File(pdfPath)
+}
+
 func DebtInformation(c *gin.Context) {
 	visitIDdata := c.Query("VisitId")
 	visitID, _ := strconv.ParseUint(visitIDdata, 10, 64)
@@ -391,26 +420,18 @@ func DebtInformation(c *gin.Context) {
 	result := initializers.DB.First(&visit, visitID)
 	if result.Error != nil {
 		fmt.Println(result.Error.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": result.Error.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
-	// GET THE CORRECT FILE, get the AktivitetsRapporten
-	filepath, err := internal.GetAktivitetsrapporten(visitID)
+	debtData, err := internal.CurrentDebtCase(visit.Sagsnr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fmt.Println(result.Error.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
-	// Set the filename for the browser download
-	downloadName := "aktivitetsrapport.docx"
-
-	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s", downloadName))
-	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-	c.File(filepath)
+	c.JSON(http.StatusOK, debtData)
 }
 
 func GetBesogsbrevHandler(c *gin.Context) {
