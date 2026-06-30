@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"gorm.io/gorm"
 )
@@ -15,7 +16,7 @@ import (
 func UpdateVisitStatus(visitID uint, newStatusID uint, userID uint) error {
 	var visit models.Visit
 	if err := initializers.DB.First(&visit, visitID).Error; err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		return err
 	}
 	oldStatusID := visit.StatusID
@@ -27,7 +28,7 @@ func UpdateVisitStatus(visitID uint, newStatusID uint, userID uint) error {
 
 	// Update status
 	if err := initializers.DB.Model(&visit).Update("status_id", newStatusID).Error; err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		return err
 	}
 

@@ -45,6 +45,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -545,17 +546,17 @@ WaitLoop:
 		// TODO: implement what should happen if the person dosnt want to sign the doc
 		switch status {
 		case 0:
-			fmt.Println("Something went wrong, the status came back 0 draft")
+			logger.Info("Something went wrong, the status came back 0 draft")
 		case 1:
-			fmt.Println("Something went wrong, the status came back 1 Pending")
+			logger.Info("Something went wrong, the status came back 1 Pending")
 		case 2:
-			fmt.Println("The status came back 2 rejected, i guess the debitor didnt like the visit")
+			logger.Info("The status came back 2 rejected, i guess the debitor didnt like the visit")
 		case 3:
-			fmt.Println("The file was deleted, status 3")
+			logger.Info("The file was deleted, status 3")
 		case 5:
-			fmt.Println("This should not happen, that it is completed and not signed, status 5")
+			logger.Info("This should not happen, that it is completed and not signed, status 5")
 		case 7:
-			fmt.Println("if this happens then penneo has changed their experiation time, status 7")
+			logger.Info("if this happens then penneo has changed their experiation time, status 7")
 		}
 		return
 	}
@@ -579,7 +580,7 @@ WaitLoop:
 
 	// TODO: Advoproupload(pdfbytes)
 
-	fmt.Printf("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
+	logger.Infof("[penneo] got signed pdf %s, %d bytes", caseFileID, len(pdfBytes))
 	hub.Notify(caseFileID, fmt.Sprintf(`{"status":"completed","documentId":%d,"size":%d}`, cf.Documents[0].ID, len(pdfBytes)))
 }
 

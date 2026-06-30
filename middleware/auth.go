@@ -1,25 +1,25 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 )
 
 func RequireAuthUser(c *gin.Context) {
-	//fmt.Println("auth middleware") this is both auditor and office
+	//logger.Info("auth middleware") this is both auditor and office
 
 	// get cookie
 	tokenString, err := c.Cookie("Authorization")
 
 	if err != nil || tokenString == "" {
-		fmt.Println("There is no token")
+		logger.Info("There is no token")
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"error": "No token provided",
 		})
@@ -32,6 +32,7 @@ func RequireAuthUser(c *gin.Context) {
 		return []byte(os.Getenv("JWT_secret")), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
+		logger.Info("Password was incorrect")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -39,7 +40,7 @@ func RequireAuthUser(c *gin.Context) {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		// check exp
 		if float64(time.Now().Unix()) > claims["exp"].(float64) {
-			fmt.Println("The token is too old")
+			logger.Info("The token is too old")
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
@@ -50,7 +51,7 @@ func RequireAuthUser(c *gin.Context) {
 		var user models.User
 		initializers.DB.First(&user, claims["sub"])
 		if user.ID == 0 {
-			fmt.Println("The token does not belong to any user")
+			logger.Warn("The token does not belong to any user")
 			var attempt models.AuthAttempt
 			attempt.IP = c.ClientIP()
 			attempt.FailureReason = "Token does not belong to any user"
@@ -76,7 +77,7 @@ func RequireAuthOfficeWorker(c *gin.Context) {
 		return
 	}
 	if tokenString == "" {
-		fmt.Println("There is no token")
+		logger.Info("There is no token")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -104,6 +105,7 @@ func RequireAuthOfficeWorker(c *gin.Context) {
 		var user models.User
 		initializers.DB.First(&user, claims["sub"])
 		if user.ID == 0 {
+			logger.Warn("The token does not belong to any user")
 			var attempt models.AuthAttempt
 			attempt.IP = c.ClientIP()
 			attempt.FailureReason = "Token does not belong to any user"
@@ -135,7 +137,7 @@ func RequireAuthAuditor(c *gin.Context) {
 		return
 	}
 	if tokenString == "" {
-		fmt.Println("There is no token")
+		logger.Info("There is no token")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -195,7 +197,7 @@ func RequireAuthAdmin(c *gin.Context) {
 		return
 	}
 	if tokenString == "" {
-		fmt.Println("There is no token")
+		logger.Info("There is no token")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}

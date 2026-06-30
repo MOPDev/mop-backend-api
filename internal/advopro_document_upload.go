@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/google/uuid"
 )
 
@@ -261,7 +262,7 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 	if dryRun {
 		_ = tx.Rollback()
 		cleanupFile()
-		fmt.Printf("[DRY RUN] DB inserts rolled back. IDs would be: %d, %d, %d\n",
+		logger.Infof("[DRY RUN] DB inserts rolled back. IDs would be: %d, %d, %d\n",
 			dokID, versionID, forsendelseID)
 		return result, nil
 	}

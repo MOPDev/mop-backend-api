@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 )
 
@@ -519,7 +520,7 @@ func AddNoteToAdvopro(visit models.Visit) bool {
 	if err != nil {
 		log.Fatalf("Insert failed: %v", err)
 	}
-	fmt.Printf("Would have inserted HistorikId: %d\n", newID)
+	logger.Infof("Would have inserted HistorikId: %d\n", newID)
 
 	return true
 }
@@ -540,7 +541,7 @@ func UpdateBehandlingskodeText(additionalText string) bool {
 	// i think its unlimited, but should be resonable.
 	// propably the comments/ short review of the visit will be there
 
-	fmt.Println(text)
+	logger.Info(text)
 	return true
 }
 
@@ -556,7 +557,7 @@ func main() {
         log.Fatalf("Query failed: %v", err)
     }
     for _, h := range entries {
-        fmt.Printf("HistorikId=%d Tekst=%q\n", h.HistorikId, h.Tekst)
+        logger.Printf("HistorikId=%d Tekst=%q\n", h.HistorikId, h.Tekst)
     }
 
     // --- Insert (dry run) ---
@@ -571,7 +572,7 @@ func main() {
     if err != nil {
         log.Fatalf("Insert failed: %v", err)
     }
-    fmt.Printf("Would have inserted HistorikId: %d\n", newID)
+    logger.Printf("Would have inserted HistorikId: %d\n", newID)
 
     // --- Update (dry run) ---
     tekst := "Updated tekst"
@@ -581,14 +582,14 @@ func main() {
     if err != nil {
         log.Fatalf("Update failed: %v", err)
     }
-    fmt.Printf("Update applied: %v\n", ok)
+    logger.Printf("Update applied: %v\n", ok)
 
     // --- Soft delete (dry run) ---
     ok, err = DeleteHistorik(server, database, 2321092, "Old tekst", `MOP\mkk`, true)
     if err != nil {
         log.Fatalf("Delete failed: %v", err)
     }
-    fmt.Printf("Delete applied: %v\n", ok)
+    logger.Printf("Delete applied: %v\n", ok)
 }
 
 

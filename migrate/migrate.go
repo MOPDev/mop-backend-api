@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -90,17 +91,17 @@ func migrateTables() {
 		&models.VisitLog{},
 	)
 	if err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		return
 	}
 
-	fmt.Println("Migration went well")
+	logger.Info("Migration went well")
 }
 
 func resetPassword(id uint) {
-	fmt.Println("id:", id)
+	logger.Info("id:", id)
 	if id == 1 {
-		fmt.Println("This is the ID of the root, and should not be changed. Try another user")
+		logger.Info("This is the ID of the root, and should not be changed. Try another user")
 		return
 	}
 
@@ -108,8 +109,8 @@ func resetPassword(id uint) {
 	var user models.User
 	user.ID = uint(id)
 	initializers.DB.First(&user)
-	fmt.Println("name: ", user.Name)
-	fmt.Print("confirm y/n: ")
+	logger.Infof("name: ", user.Name)
+	logger.Info("confirm y/n: ")
 	var resp string
 	n, err := fmt.Scanf("%s", &resp)
 	if err != nil || n != 1 {
@@ -117,12 +118,12 @@ func resetPassword(id uint) {
 	}
 	resp = strings.ToLower(strings.TrimSpace(resp))
 	if resp != "y" && resp != "yes" {
-		fmt.Println("aborted")
+		logger.Info("aborted")
 		return
 	}
 
 	initializers.DB.Model(&user).Update("password", string(hashedPassword))
-	fmt.Println("the new password is 'pass'")
+	logger.Info("the new password is 'pass'")
 }
 
 func fullreset() {

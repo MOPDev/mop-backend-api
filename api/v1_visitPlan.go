@@ -11,6 +11,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
 	"github.com/MOPDev/mop-backend-api/internal/excel"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 )
@@ -133,7 +134,7 @@ func PlanVisit(c *gin.Context) {
 		advoproStatusUint, _ := strconv.ParseUint(rowData["Comment 2"], 10, 64) // , statuskode
 
 		if visitIDUint == 0 {
-			fmt.Printf("Row %d: Missing Visit ID, skipping\n", i+2)
+			logger.Errorf("Row %d: Missing Visit ID, skipping\n", i+2)
 			continue
 		}
 
@@ -168,7 +169,7 @@ func PlanVisit(c *gin.Context) {
 		result := query.Updates(updatedVisit)
 
 		if result.Error != nil {
-			fmt.Printf("Database error row %d: %v\n", i+2, result.Error)
+			logger.Errorf("Database error row %d: %v\n", i+2, result.Error)
 			continue
 		}
 

@@ -111,7 +111,7 @@ func GetBesogsbrev(visitId uint64) ([]byte, error) {
 	}
 	//if len(advoproResult) > 0 { this warning dosnt matter
 	// if more then one they should be the same, but just take the most recent which is the top one
-	//	fmt.Println("More then one besøgsbrev file for this case, using the latest")
+	//	logger.Info("More then one besøgsbrev file for this case, using the latest")
 	//}
 
 	winPlacering := toString(advoproResult[0]["Placering"]) // "\\MOPSRV01\AdvoPro\Opgaver\..."

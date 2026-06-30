@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	_ "github.com/denisenkom/go-mssqldb"
 )
@@ -72,23 +73,23 @@ func ExecuteQuery(server, database, query string, params ...interface{}) ([]map[
 
 	db, err := sql.Open("sqlserver", conn)
 	if err != nil {
-		fmt.Print(err.Error())
+		logger.Error(err.Error())
 		return nil, fmt.Errorf("server could not be opened: %w", err)
 	}
 	defer db.Close()
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
-		fmt.Println(query)
-		fmt.Println(params...)
-		fmt.Print(err.Error())
+		logger.Info(query)
+		logger.Infof("%v", params)
+		logger.Error(err.Error())
 		return nil, fmt.Errorf("Query could not be executed: %w", err)
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		fmt.Print(err.Error())
+		logger.Error(err.Error())
 		return nil, fmt.Errorf("failed to fetch column names from database: %w", err)
 	}
 
@@ -100,7 +101,7 @@ func ExecuteQuery(server, database, query string, params ...interface{}) ([]map[
 			ptrs[i] = &values[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			fmt.Println("Somthing went wrong in the data parsing")
+			logger.Error("Somthing went wrong in the data parsing")
 			return nil, err
 		}
 
@@ -140,7 +141,7 @@ func FetchBulkCaseData(sagsnumre []uint) (map[uint]AdvoProCaseData, error) {
 
 	results, err := ExecuteQuery(Server, AdvoPro, query, args...)
 	if err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		return nil, err
 	}
 	// TODO: WHAT IF 2 HAVE THE SAME SAGSNR?
@@ -164,16 +165,16 @@ func FetchBulkCaseData(sagsnumre []uint) (map[uint]AdvoProCaseData, error) {
 func FetchDebitorData(debitorNum int64) *models.Debitor {
 	debitors, err := ExecuteQuery(Server, AdvoPro, debitorQuery, debitorNum)
 	if err != nil {
-		fmt.Println("Something went wrong during the fetch of a debitor")
-		fmt.Println(err)
+		logger.Error("Something went wrong during the fetch of a debitor")
+		logger.Error(err.Error())
 		return nil
 	}
 	if len(debitors) > 1 {
-		fmt.Println("There is more than one Debitor with this debitorID")
+		logger.Error("There is more than one Debitor with this debitorID")
 		return nil
 	}
 	if len(debitors) == 0 {
-		fmt.Println("There is not any debitor with this ID")
+		logger.Error("There is not any debitor with this ID")
 		return nil
 	}
 	debitor := debitors[0]
@@ -187,7 +188,7 @@ func FetchDebitorData(debitorNum int64) *models.Debitor {
 	email, ok7 := debitor["EPost"].(string)
 
 	if !ok1 && !ok2 && !ok3 && !ok4 && !ok5 && !ok6 && !ok7 {
-		fmt.Println("Formatting from the database has gone wrong")
+		logger.Error("Formatting from the database has gone wrong")
 		return nil
 	}
 
@@ -366,7 +367,7 @@ func UploadDocument(srcPath string, sagsnr uint64, title string) error {
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	fmt.Printf("Uploaded document: dok_id=%d version_id=%d forsendelse_id=%d\n",
+	logger.Infof("Uploaded document: dok_id=%d version_id=%d forsendelse_id=%d\n",
 		res.DokID, res.VersionID, res.ForsendelseID)
 	return nil
 }

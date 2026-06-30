@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/api2"
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +17,7 @@ func init() {
 	// Load environment variables and connect to the database
 	initializers.LoadEnvVariables()
 	initializers.ConnectToDB()
+	initializers.InitLogger()
 	middleware.LoginLogCleanup()
 }
 
@@ -26,20 +27,20 @@ func main() {
 }
 
 func test() {
-	fmt.Println("starting test")
+	logger.Info("starting test")
 	//internal.CurrentDebtCase(114429)
 	//internal.GeneratePDFVisit(1)
 	internal.GetBesogsbrev(283)
 
-	fmt.Println("test over")
+	logger.Info("test over")
 }
 
 func start_server() {
-	fmt.Print(time.Now().Format("2006/01/02-15:04:05"))
-	fmt.Println(" Starting server...")
+	logger.Info(time.Now().Format("2006/01/02-15:04:05"))
+	logger.Info(" Starting server...")
 
 	r := gin.New() // was gin.Default()
-	r.Use(middleware.RequestLogger())
+	r.Use(logger.RequestLogger())
 	r.Use(middleware.CORSMiddleware)
 	r.Use(middleware.GeoIPBlocker("DK", "./static/GeoLite2-Country.mmdb"))
 	// Trust your nginx proxy IP(s) or the private networks where your proxies live.
@@ -218,8 +219,8 @@ func start_server() {
 		port = "8000"
 	}
 	if err := r.Run(":" + port); err != nil {
-		fmt.Printf("Server error: %v\n", err)
+		logger.Infof("Server error: %v\n", err)
 	} else {
-		fmt.Printf("Server has closed\n")
+		logger.Info("Server has closed\n")
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -107,11 +108,6 @@ func AvailableVisitCreation(c *gin.Context) {
 	for _, value := range processedVisits {
 		finalResults = append(finalResults, value)
 	}
-	/*
-		for _, m := range finalResults {
-			fmt.Println(m["index"])
-		}
-	*/
 	c.JSON(http.StatusOK, gin.H{
 		"results": finalResults,
 	})
@@ -152,14 +148,13 @@ func CreatedVisits(c *gin.Context) {
 		})
 		return
 	}
-	//fmt.Println(user.Username)
 	var planned []models.Visit
 	result := initializers.DB.
 		Preload("Type").
 		Preload("Debitors").
 		Where(&models.Visit{StatusID: 1}).Find(&planned)
 	if result.Error != nil {
-		fmt.Println(result.Error.Error())
+		logger.Error(result.Error.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "the database happend upon an error",
 			"error":   result.Error.Error(),
@@ -301,13 +296,13 @@ func CreateVisitResponse(c *gin.Context) {
 	user, _ := getVerifyUser(c)
 	var visitResponse models.VisitResponse
 	if err := c.ShouldBindJSON(&visitResponse); err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := initializers.DB.Create(&visitResponse).Error; err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		c.JSON(500, gin.H{"error": "Failed to save visit response"})
 		return
 	}
@@ -390,7 +385,7 @@ func AktivitersRapport(c *gin.Context) {
 	var visit models.Visit
 	result := initializers.DB.First(&visit, visitID)
 	if result.Error != nil {
-		fmt.Println(result.Error.Error())
+		logger.Error(result.Error.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
@@ -419,14 +414,14 @@ func DebtInformation(c *gin.Context) {
 	var visit models.Visit
 	result := initializers.DB.First(&visit, visitID)
 	if result.Error != nil {
-		fmt.Println(result.Error.Error())
+		logger.Error(result.Error.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
 	debtData, err := internal.CurrentDebtCase(visit.Sagsnr)
 	if err != nil {
-		fmt.Println(result.Error.Error())
+		logger.Error(result.Error.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
@@ -453,20 +448,6 @@ func GetBesogsbrevHandler(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename)) // inline = opens in browser
 	c.Data(http.StatusOK, "application/pdf", fileBytes)                               // ← changed MIME type
 }
-
-/*
-	data, err := internal.CurrentDebtCase(visit.Sagsnr)
-	// if an error occurs then just dont send any info
-	if err != nil {
-		fmt.Println(err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, data)
-*/
 
 func DeleteVisit(c *gin.Context) {
 	dataid := c.Query("id")

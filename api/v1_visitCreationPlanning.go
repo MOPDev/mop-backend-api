@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
 	"github.com/MOPDev/mop-backend-api/internal/excel"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -91,7 +91,7 @@ func VisitCreation(c *gin.Context) {
 		}
 		result := initializers.DB.Create(&visit)
 		if result.Error != nil {
-			fmt.Println(result.Error.Error())
+			logger.Error(result.Error.Error())
 		}
 		createdVisits = append(createdVisits, visit)
 
@@ -132,7 +132,7 @@ func VisitCreation(c *gin.Context) {
 		}
 	}
 
-	fmt.Printf("Created visits count: %d\n", len(createdVisits))
+	logger.Infof("Created visits count: %d\n", len(createdVisits))
 
 	// re fetch the visits to ensure debitor is there
 

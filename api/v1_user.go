@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/middleware"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
@@ -274,7 +274,7 @@ func Patch(c *gin.Context) {
 
 	// Bind the JSON to userPatch
 	if err := c.ShouldBindBodyWithJSON(&userPatch); err != nil {
-		fmt.Println(err.Error())
+		logger.Error(err.Error())
 		c.JSON(400, gin.H{"error": "Invalid input"})
 		return
 	}
