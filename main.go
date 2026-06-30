@@ -109,6 +109,8 @@ func start_server() {
 		apiv1.POST("/penneo/webhook", api.PenneoWebhook)
 		apiv1.GET("/penneo/events/:caseFileId", api.PenneoSSE)
 
+		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
+
 		// penneo integration
 
 		// following the flow from postman
