@@ -134,7 +134,7 @@ func PlanVisit(c *gin.Context) {
 		advoproStatusUint, _ := strconv.ParseUint(rowData["Comment 2"], 10, 64) // , statuskode
 
 		if visitIDUint == 0 {
-			logger.Errorf("Row %d: Missing Visit ID, skipping\n", i+2)
+			logger.Errorf("Row %d: Missing Visit ID, skipping", i+2)
 			continue
 		}
 
@@ -169,7 +169,7 @@ func PlanVisit(c *gin.Context) {
 		result := query.Updates(updatedVisit)
 
 		if result.Error != nil {
-			logger.Errorf("Database error row %d: %v\n", i+2, result.Error)
+			logger.Errorf("Database error row %d: %v", i+2, result.Error)
 			continue
 		}
 

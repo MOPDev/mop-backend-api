@@ -29,7 +29,7 @@ func ConvertDocxToPdf(docxPath string) (string, error) {
 	cmd := exec.Command(libreOfficeBin, "--headless", "--convert-to", "pdf", "--outdir", outDir, docxPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("libreoffice conversion failed: %w\nOutput: %s", err, string(output))
+		return "", fmt.Errorf("libreoffice conversion failed: %w, Output: %s", err, string(output))
 	}
 
 	// Build the expected PDF path (LibreOffice replaces the extension)

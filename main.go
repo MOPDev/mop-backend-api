@@ -219,8 +219,8 @@ func start_server() {
 		port = "8000"
 	}
 	if err := r.Run(":" + port); err != nil {
-		logger.Infof("Server error: %v\n", err)
+		logger.Infof("Server error: %v", err)
 	} else {
-		logger.Info("Server has closed\n")
+		logger.Info("Server has closed")
 	}
 }

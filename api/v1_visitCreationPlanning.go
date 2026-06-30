@@ -132,7 +132,7 @@ func VisitCreation(c *gin.Context) {
 		}
 	}
 
-	logger.Infof("Created visits count: %d\n", len(createdVisits))
+	logger.Infof("Created visits count: %d", len(createdVisits))
 
 	// re fetch the visits to ensure debitor is there
 

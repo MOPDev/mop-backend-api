@@ -262,7 +262,7 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 	if dryRun {
 		_ = tx.Rollback()
 		cleanupFile()
-		logger.Infof("[DRY RUN] DB inserts rolled back. IDs would be: %d, %d, %d\n",
+		logger.Infof("[DRY RUN] DB inserts rolled back. IDs would be: %d, %d, %d",
 			dokID, versionID, forsendelseID)
 		return result, nil
 	}

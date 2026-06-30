@@ -367,7 +367,7 @@ func UploadDocument(srcPath string, sagsnr uint64, title string) error {
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	logger.Infof("Uploaded document: dok_id=%d version_id=%d forsendelse_id=%d\n",
+	logger.Infof("Uploaded document: dok_id=%d version_id=%d forsendelse_id=%d",
 		res.DokID, res.VersionID, res.ForsendelseID)
 	return nil
 }

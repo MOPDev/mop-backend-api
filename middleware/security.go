@@ -147,7 +147,7 @@ func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
 			if name == "" {
 				name = record.Country.IsoCode
 			}
-			logger.Warnf("IP: %s Country: %s (%s)\n", ip, name, record.Country.IsoCode)
+			logger.Warnf("IP: %s Country: %s (%s)", ip, name, record.Country.IsoCode)
 			c.AbortWithStatusJSON(403, gin.H{"error": "Access forbidden"})
 			return
 		}
