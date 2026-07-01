@@ -430,8 +430,7 @@ func DebtInformation(c *gin.Context) {
 }
 
 func GetBesogsbrevHandler(c *gin.Context) {
-	visitIdStr := c.Param("visitId")
-	visitId, err := strconv.ParseUint(visitIdStr, 10, 64)
+	visitId, err := strconv.ParseUint(c.Param("visitId"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid visit ID"})
 		return
@@ -443,14 +442,31 @@ func GetBesogsbrevHandler(c *gin.Context) {
 		return
 	}
 
-	filename := "besogsbrev.pdf" // ← changed
-
-	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename)) // inline = opens in browser
-	c.Data(http.StatusOK, "application/pdf", fileBytes)                               // ← changed MIME type
+	c.Header("Content-Disposition", `inline; filename="besogsbrev.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", fileBytes)
 }
 
-func GetBesogsbrevBatchHandler(c *gin.Context) {
-	idsStr := c.Query("ids") // ?ids=289,291,293
+func GetSFHandler(c *gin.Context) {
+	visitId, err := strconv.ParseUint(c.Param("visitId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid visit ID"})
+		return
+	}
+
+	fileBytes, err := internal.GetSF(visitId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", `inline; filename="salgsfuldmagt.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", fileBytes)
+}
+
+// BatchHandler merges besogsbrev (page 2) + SF (page 3) for each visit into one PDF.
+// SF is skipped silently if the visit is not a kobekontrakt.
+func GetBatchHandler(c *gin.Context) {
+	idsStr := c.Query("ids")
 	if idsStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ids query param required"})
 		return
@@ -463,12 +479,19 @@ func GetBesogsbrevBatchHandler(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id: " + part})
 			return
 		}
+
 		b, err := internal.GetBesogsbrev(id)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d: %s", id, err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
 			return
 		}
 		pdfs = append(pdfs, b)
+
+		sf, err := internal.GetSF(id)
+		if err == nil {
+			pdfs = append(pdfs, sf)
+		}
+		// ponytail: non-kobekontrakt visits return an error from GetSF, silently skip
 	}
 
 	merged, err := internal.MergePDFs(pdfs)
@@ -477,7 +500,7 @@ func GetBesogsbrevBatchHandler(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Disposition", `inline; filename="besøgsbreve.pdf"`)
+	c.Header("Content-Disposition", `inline; filename="batch.pdf"`)
 	c.Data(http.StatusOK, "application/pdf", merged)
 }
 

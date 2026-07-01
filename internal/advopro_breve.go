@@ -100,8 +100,77 @@ func ExtractPDFPage(pdfBytes []byte, pageNum int) ([]byte, error) {
 	return outBytes, nil
 }
 
-// IMPLEMENT BESOGSBREV RETRIVAL
+// internal/documents.go
+
+// ponytail: shared fetch+convert, page param selects the slice
+func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
+	var visit models.Visit
+	if err := initializers.DB.First(&visit, visitId).Error; err != nil {
+		return nil, err
+	}
+	if requireTypeID != nil && visit.TypeID != *requireTypeID {
+		return nil, fmt.Errorf("visit %d is not type %d", visitId, *requireTypeID)
+	}
+
+	query := `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
+    FROM vwKlientSagsforlob sf
+    WHERE sf.Sagsnr = @p1
+    AND sf.Extension = 'docx'
+    AND (
+        LOWER(sf.Tekst) LIKE '%besøgsbrev blanco sendt%' OR
+        LOWER(sf.Tekst) LIKE '%besøgsbrev bil sendt%'
+    )
+    ORDER BY sf.Tidspunkt desc`
+
+	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no document found for case %s", visit.Sagsnr)
+	}
+
+	letterPath := resolveDocPath(toString(rows[0]["Placering"]), toString(rows[0]["Filnavn"]))
+	if runtime.GOOS != "windows" {
+		if _, err := os.Stat(letterPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("file does not exist at path: %s", letterPath)
+		}
+	}
+
+	pdfPath, err := ConvertDocxToPdf(letterPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert document to PDF: %w", err)
+	}
+	defer os.Remove(pdfPath)
+
+	fileBytes, err := os.ReadFile(pdfPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PDF: %w", err)
+	}
+
+	return ExtractPDFPage(fileBytes, page)
+}
+
+func resolveDocPath(winPlacering, winFilnavn string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(winPlacering, winFilnavn)
+	}
+	rel := strings.TrimPrefix(winPlacering, `\\MOPSRV01\AdvoPro`)
+	rel = strings.ReplaceAll(rel, "\\", "/")
+	return filepath.Join("/mnt/advopro", rel, winFilnavn)
+}
+
 func GetBesogsbrev(visitId uint64) ([]byte, error) {
+	return getDocPage(visitId, nil, 2)
+}
+
+func GetSF(visitId uint64) ([]byte, error) {
+	typeID := uint(1)
+	return getDocPage(visitId, &typeID, 3)
+}
+
+// skyldnererklæring
+func GetSE(visitId uint64) ([]byte, error) {
 
 	var visit models.Visit
 	result := initializers.DB.First(&visit, visitId)
@@ -173,7 +242,7 @@ func GetBesogsbrev(visitId uint64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read PDF: %w", err)
 	}
 
-	// Extract only page 2
+	// Extract only page 3
 	fileBytes, err = ExtractPDFPage(fileBytes, 2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract page: %w", err)

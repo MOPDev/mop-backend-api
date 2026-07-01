@@ -89,7 +89,8 @@ func start_server() {
 		apiv1.POST("/visits/create", middleware.RequireAuthOfficeWorker, api.VisitCreation)                 // creates thoses visits
 		apiv1.GET("/visits/create", middleware.RequireAuthOfficeWorker, api.CreatedVisits)                  // retrives the created visits that have not yet been planned
 		apiv1.GET("/visits/:visitId/besogsbrev", middleware.RequireAuthUser, api.GetBesogsbrevHandler)
-		apiv1.GET("/visits/besogsbrev/batch", middleware.RequireAuthUser, api.GetBesogsbrevBatchHandler)
+		apiv1.GET("/visits/:visitId/SF", middleware.RequireAuthUser, api.GetSFHandler)
+		apiv1.GET("/visits/besogsbrev/batch", middleware.RequireAuthUser, api.GetBatchHandler)
 
 		apiv1.PATCH("/visits/:id/group", middleware.RequireAuthOfficeWorker, api.ChangeGroupId)                  // move a singe visit to a new groupId
 		apiv1.PATCH("/visits/group/:groupId/date", middleware.RequireAuthOfficeWorker, api.ChangeGroupDate)      // change the date of all visits with a groupID
