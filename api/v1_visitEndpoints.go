@@ -449,6 +449,38 @@ func GetBesogsbrevHandler(c *gin.Context) {
 	c.Data(http.StatusOK, "application/pdf", fileBytes)                               // ← changed MIME type
 }
 
+func GetBesogsbrevBatchHandler(c *gin.Context) {
+	idsStr := c.Query("ids") // ?ids=289,291,293
+	if idsStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids query param required"})
+		return
+	}
+
+	var pdfs [][]byte
+	for _, part := range strings.Split(idsStr, ",") {
+		id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id: " + part})
+			return
+		}
+		b, err := internal.GetBesogsbrev(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d: %s", id, err)})
+			return
+		}
+		pdfs = append(pdfs, b)
+	}
+
+	merged, err := internal.MergePDFs(pdfs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to merge PDFs: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", `inline; filename="besøgsbreve.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", merged)
+}
+
 func DeleteVisit(c *gin.Context) {
 	dataid := c.Query("id")
 	id, _ := strconv.ParseUint(dataid, 10, 32)

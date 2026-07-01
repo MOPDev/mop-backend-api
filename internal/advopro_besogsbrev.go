@@ -1,14 +1,17 @@
 package internal
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
-	api "github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/api"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/models"
@@ -16,23 +19,26 @@ import (
 
 // ConvertDocxToPdf converts a .docx file to .pdf using LibreOffice headless.
 // Returns the path to the generated PDF file.
+// ponytail: global lock — LibreOffice single-instance limit. Per-user locks if throughput matters.
+var libreOfficeMu sync.Mutex
+
 func ConvertDocxToPdf(docxPath string) (string, error) {
-	// LibreOffice writes the PDF into the same directory as the source file
 	outDir := filepath.Dir(docxPath)
 
-	// Pick the right executable
-	libreOfficeBin := "libreoffice" // Linux/Mac
+	libreOfficeBin := "libreoffice"
 	if runtime.GOOS == "windows" {
 		libreOfficeBin = `C:\Program Files\LibreOffice\program\soffice.exe`
 	}
 
+	libreOfficeMu.Lock()
 	cmd := exec.Command(libreOfficeBin, "--headless", "--convert-to", "pdf", "--outdir", outDir, docxPath)
 	output, err := cmd.CombinedOutput()
+	libreOfficeMu.Unlock()
+
 	if err != nil {
 		return "", fmt.Errorf("libreoffice conversion failed: %w, Output: %s", err, string(output))
 	}
 
-	// Build the expected PDF path (LibreOffice replaces the extension)
 	base := filepath.Base(docxPath)
 	ext := filepath.Ext(base)
 	pdfName := base[:len(base)-len(ext)] + ".pdf"
@@ -43,6 +49,18 @@ func ConvertDocxToPdf(docxPath string) (string, error) {
 	}
 
 	return pdfPath, nil
+}
+
+func MergePDFs(pdfs [][]byte) ([]byte, error) {
+	readers := make([]io.ReadSeeker, len(pdfs))
+	for i, b := range pdfs {
+		readers[i] = bytes.NewReader(b)
+	}
+	var out bytes.Buffer
+	if err := api.MergeRaw(readers, &out, false, nil); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // ExtractPDFPage extracts a single page from a PDF and returns the bytes.
