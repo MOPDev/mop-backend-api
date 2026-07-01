@@ -270,41 +270,42 @@ func getAccessToken() (*PenneoTokenResp, error) {
 	return &result, nil
 }
 
-func createWebhookSubscription(accessToken string) (*WebhookSubscriptionResp, error) {
-	endpoint := os.Getenv("PENNEO_WEBHOOK_ENDPOINT")
-	reqBody := WebhookSubscriptionReq{
-		EventTypes: []string{"sign.casefile.completed", "sign.signer.signed"},
-		Endpoint:   endpoint,
-	}
-	body, _ := json.Marshal(reqBody)
+/*
+	func createWebhookSubscription(accessToken string) (*WebhookSubscriptionResp, error) {
+		endpoint := os.Getenv("PENNEO_WEBHOOK_ENDPOINT")
+		reqBody := WebhookSubscriptionReq{
+			EventTypes: []string{"sign.casefile.completed", "sign.signer.signed"},
+			Endpoint:   endpoint,
+		}
+		body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest("POST", baseUrl+"webhook/api/v1/subscriptions", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Auth-Token", accessToken)
+		req, _ := http.NewRequest("POST", baseUrl+"webhook/api/v1/subscriptions", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-Auth-Token", accessToken)
 
-	resp, err := (&http.Client{}).Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("webhook sub: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("webhook sub: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusConflict {
-		return nil, nil // already exists
-	}
-	if resp.StatusCode != http.StatusCreated {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("webhook sub status %d: %s", resp.StatusCode, string(b))
-	}
+		if resp.StatusCode == http.StatusConflict {
+			return nil, nil // already exists
+		}
+		if resp.StatusCode != http.StatusCreated {
+			b, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("webhook sub status %d: %s", resp.StatusCode, string(b))
+		}
 
-	var result WebhookSubscriptionResp
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode webhook: %w", err)
+		var result WebhookSubscriptionResp
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, fmt.Errorf("decode webhook: %w", err)
+		}
+		os.Setenv("PENNEO_WEBHOOK_SECRET", result.Secret) // TODO: persist in DB
+		return &result, nil
 	}
-	os.Setenv("PENNEO_WEBHOOK_SECRET", result.Secret) // TODO: persist in DB
-	return &result, nil
-}
-
+*/
 func sendCaseFile(accessToken string) (*PenneoJobState, error) {
 	documentTitle := "Contract Document"
 	documentName := "contract.pdf"
