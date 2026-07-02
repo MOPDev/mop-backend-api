@@ -184,66 +184,158 @@ type VisitResponse struct {
 	PosAccuracy string        `json:"pos_accuracy" binding:"required"`
 	Duration    time.Duration `json:"duration"`
 
-	// response data
-	DebitorIsHome         *bool    `json:"debitor_is_home"`
-	PaymentReceived       *bool    `json:"payment_received"`
-	PaymentReceivedAmount *float32 `json:"payment_received_amount"`
-	AssetAtAddress        *bool    `json:"asset_at_address"`
-	AssetAtWorkshop       *bool    `json:"asset_at_workshop"`
-	AssetCleaned          *bool    `json:"asset_cleaned"`
-	AssetLocation         string   `json:"asset_location"`
+	// nested questions
+	Contact  ContactQuestions  `json:"contact" gorm:"embedded;embeddedPrefix:contact_"`
+	Payment  PaymentQuestions  `json:"payment" gorm:"embedded;embeddedPrefix:payment_"`
+	Assets   AssetQuestions    `json:"assets" gorm:"embedded;embeddedPrefix:asset_"`
+	Property PropertyQuestions `json:"property" gorm:"embedded;embeddedPrefix:property_"`
+	Monetary MonetaryQuestions `json:"monetary" gorm:"embedded;embeddedPrefix:monetary_"`
 
-	AssetComments string `json:"asset_comments"`
+	// one to many
+	OtherAssets []Asset              `json:"other_assets" gorm:"foreignKey:VisitResponseID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Images      []VisitResponseImage `json:"images" gorm:"foreignKey:VisitResponseID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
-	AssetDelivered *bool `json:"asset_delivered"`
-	AssetDamaged   *bool `json:"asset_damaged"` // if then discribe
-	KeysGiven      *bool `json:"keys_given"`
-	KeysReceived   *bool `json:"keys_received"`
+	Comments string `json:"comments"` // free text field for comments, Property and such
+}
 
+type ContactQuestions struct {
+	// quick option to choose the expected name
+	MailboxName string `json:"mailbox_name"`
+
+	// hvis CPR og kobekontrakt
+	DebitorMet *bool `json:"debitor_met"` // Pointer so it can be null, not just false
+	OtherMet   *bool `json:"other_met"`
+	// including but not limited to "ægtefælle", "Partner", "kæreste", "Barn", "Nabo"
+	OtherTitle string `json:"other_title"`
+
+	// hvis CVR og kobekontrakt
+	WorkerMet *bool `json:"worker_met"`
+	// including but not limited to "Direktør", "Håndværker", "Lønmodtager/arbejder", "receptionist"
+	WorkerTitle string `json:"worker_title"`
+
+	CorrectedTlf  string `json:"corrected_tlf"`
+	CorrectedMail string `json:"corrected_mail"`
+}
+
+type PaymentQuestions struct {
+	// betaling af restancen, enten delvist eller fuldt via bankoverførsel eller i kontanter
+	ReceivedPayment *bool
+	PaymentAmount   *Money // 150,95 => 15095, always in ore
+	PaymentMethod   string // including but not limited to "Kontant", "Bankoverførsel", etc.
+}
+
+type AssetQuestions struct {
+	// asset meaning the car, truck, boat, RV, etc.
+	// if located then prompt to take picture
+	AssetSeen *bool `json:"asset_seen"`
+	// can it be taken?
+	AssetAccessible *bool `json:"asset_accessible"`
+	// "Perfect", "minor scratches", "beaten up", "Totaled"
+	AssetStatus string `json:"asset_status"`
+	// "wheels missing" etc.
+	AssetStatusNote string `json:"asset_status_note"`
+	// "lige ud af vaskehal", "generelt ren", "jord og mudder/beskidt"
+	AssetCleanliness string `json:"asset_cleanliness"`
+	// burned seats
+	AssetCleanlinessNote string `json:"asset_cleanliness_note"`
+
+	// if debitor or other is there then ask
+	AssetConfirmedOwner *bool `json:"asset_confirmed_owner"`
+	// only if owner is there
+	AssetKeysDelivered *bool `json:"asset_keys_delivered"`
+	SFSigned           *bool `json:"sf_signed"` // Salgs Fuldmagt
+
+	// only if IsSeized == true
 	OdometerKm *uint `json:"odometer_km"`
 
-	SFSigned *bool `json:"sf_signed"`
-	SESigned *bool `json:"se_signed"`
+	// if keys are given what is the take home strategy,
+	// when kobekontrakt debitor owns the car
+	// when blanco they can both own and not own
+	// when leasing they dont own so it will be taken, if we can, unless they pay
 
-	CivilStatus *CivilStatus `json:"civil_status"`
+	// if they dont own
+	// Asset left for later pickup (tomorrow or just later)
+	// Asset is getting picked up by grube (sjælland) or ???? (jylland)
+	// auditor moves it themselves to local dealership for later pickup
+	// most important, where is the vehicle after it has been moved, the result of the visit
+	// --- Contract Type ---
+	// Options: "Købekontrakt" (Reservation of title / Ejendomsforbehold)
+	//          "Blanco" (Unsecured)
+	//          "Leasing" (Creditor owns the asset)
+	ContractType string `json:"contract_type"`
 
-	//children
-	ChildrenUnder18 *uint    `json:"children_under_18"`
-	ChildrenOver18  *uint    `json:"children_over_18"`
-	ChildSupport    *float32 `json:"child_support"`
+	// --- Seizure and Strategy ---
+	// Has received the car keys / vehicle taken
+	IsSeized *bool `json:"is_seized" gorm:"index"`
 
-	//work
-	HasWork  *bool    `json:"has_work"`
-	Position string   `json:"position"`
-	Salary   *float32 `json:"salary"`
+	// Take Home / Handover Strategy (Mandatory if IsSeized is true)
+	// Options: "Auditor Drive-Away", "Immediate Towing", "Leave On Site Locked", "Other"
+	HandoverStrategy string `json:"handover_strategy"`
+	// if other then describe, hvad er aftalen? og med hvem
+	HandoverStrategyNote string `json:"handover_strategy_note"`
 
-	PensionPayment *float32 `json:"pension_payment"`
+	// Towing / Transport Provider -- display the contact information to the auditor.
+	// Options: "Grube (Sjælland)", "Jens (Jylland)", "Auditor", "Other" (skriv i final loca note), "None"
+	TransportProvider string `json:"transport_provider"`
 
-	IncomePayment *float32 `json:"income_payment"` // this is money recieved that is not worked for
+	// --- THE RESULT OF THE VISIT (The ultimate source of truth) ---
+	// Options:
+	// 			"Towing Storage Yard (Sjælland)"
+	//          "Towing Storage Yard (Jylland)"
+	//          "Local Dealership" (Often for leasing returns)
+	//          "At Debtor Address" (If left behind locked on-site)
+	//          "Other"
+	FinalVehicleLocation string `json:"final_vehicle_location" gorm:"index"`
 
-	MonthlyDisposableAmount *float32 `json:"monthly_disposable_amount"`
+	// Crucial free-text note: Exact GPS, address, bay number, or key locker location
+	// e.g., "Parked in bay 42, keys dropped in Grube's night box" or "Left on driveway, locked, pending Jens pickup tomorrow"
+	FinalVehicleLocationNote string `json:"final_vehicle_location_note" gorm:"type:text"`
+}
 
-	// debt
-	Creditor    string   `json:"creditor"`
-	DebtAmount  *float32 `json:"debt_amount"`
-	Settlement  string   `json:"settlement"`
-	Creditor2   string   `json:"creditor_2"`
-	DebtAmount2 *float32 `json:"debt_amount_2"`
-	Settlement2 string   `json:"settlement_2"`
-	Creditor3   string   `json:"creditor_3"`
-	DebtAmount3 *float32 `json:"debt_amount_3"`
-	Settlement3 string   `json:"settlement_3"`
+type Asset struct {
+	gorm.Model
+	Regnr        string
+	ImagePath    string
+	OriginalName string
+}
 
-	// property
-	PropertyType      *PropertyType      `json:"property_type"`
-	MaintenanceStatus *MaintenanceStatus `json:"maintenance_status"`
+type PropertyQuestions struct {
+	PropertyType *PropertyType `json:"property_type"`
+	// if below are not descriptive enough, write in the comments
+	OvergrownGarden   *bool
+	MailboxFull       *bool
+	BrokenWindows     *bool
+	AbandonedVehicles *bool
+	TrashOverflown    *bool
+	ForsaleSign       *bool
+}
 
-	//Ownership
-	OwnershipStatus string `json:"ownership_status"` // owner, tenant, other
+type MonetaryQuestions struct {
+	// standard answers are: "Gift", "enlig", "samboende", other
+	CivilStatus string `json:"civil_status"`
 
-	Comments string `json:"comments"` // free text field for comments
-	// images
-	Images []VisitResponseImage `json:"images" gorm:"foreignKey:VisitResponseID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	//children At home
+	ChildrenOver18 *uint `json:"children_over_18"`
+	//ChildSupport   *float32 `json:"child_support"`
+
+	//work - rough amounts
+	HasWork  *bool  `json:"has_work"`
+	Position string `json:"position"`
+
+	// Split NetSalary into Min and Max (using custom Money pointers)
+	NetSalaryMin *Money `json:"net_salary_min" binding:"omitempty,ltefield=NetSalaryMax" gorm:"type:bigint"`
+	NetSalaryMax *Money `json:"net_salary_max" binding:"omitempty,gtefield=NetSalaryMin" gorm:"type:bigint"`
+
+	// Other income rough amounts - offentlige ydelser
+	IncomePaymentMin *Money `json:"income_payment_min" binding:"omitempty,ltefield=IncomePaymentMax" gorm:"type:bigint"`
+	IncomePaymentMax *Money `json:"income_payment_max" binding:"omitempty,gtefield=IncomePaymentMin" gorm:"type:bigint"`
+
+	// Disposable Income Range
+	MonthlyDisposableMin *Money `json:"monthly_disposable_min" binding:"omitempty,ltefield=MonthlyDisposableMax" gorm:"type:bigint"`
+	MonthlyDisposableMax *Money `json:"monthly_disposable_max" binding:"omitempty,gtefield=MonthlyDisposableMin" gorm:"type:bigint"`
+
+	// Other debt being paid per month roughly
+	DebtAmountPaid *Money `json:"debt_amount_paid" gorm:"type:bigint"`
 }
 
 type VisitResponseImage struct {

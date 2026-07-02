@@ -261,15 +261,15 @@ var status5 = models.VisitStatus{
 
 var type1 = models.VisitType{
 	Text: "købekontrakt",
-	Description: `En købekontrakt betyder at bilen ejes af debitor. 
-	Debitor skylder dog penge som han har brugt på bilen. 
+	Description: `En købekontrakt betyder at bilen ejes af debitor.
+	Debitor skylder dog penge som han har brugt på bilen.
 	Det er derfor vigtigt at vide hvordan bilen har det og om han har solgt eller andet`,
 }
 
 var type2 = models.VisitType{
 	Text: "leasing",
-	Description: `En Leasing aftale betyder at bilen ikke ejes af debitor. 
-	Det betyder at man godt bare må tage bilen. 
+	Description: `En Leasing aftale betyder at bilen ikke ejes af debitor.
+	Det betyder at man godt bare må tage bilen.
 	Det er derfor vigtigt at vide hvordan bilen har det, og evt. hvor den er nu`,
 }
 
@@ -438,29 +438,73 @@ var visitResponse1 = models.VisitResponse{
 	ActTime: "10:00 AM",
 	ActLat:  "37.7749",
 	ActLong: "-122.4194",
+
+	PosAccuracy: "0.001",
+	Duration:    time.Duration(time.Duration.Minutes(3)),
+
 	// Response data
-	DebitorIsHome: ptr(true),
+	Contact: models.ContactQuestions{
+		MailboxName:   "",
+		DebitorMet:    ptr(true),
+		OtherMet:      nil,
+		OtherTitle:    "",
+		WorkerMet:     nil,
+		WorkerTitle:   "",
+		CorrectedTlf:  "",
+		CorrectedMail: "",
+	},
 
-	AssetAtAddress: ptr(true),
-	AssetDamaged:   ptr(false),
+	Payment: models.PaymentQuestions{
+		ReceivedPayment: nil,
+		PaymentAmount:   ptr(models.Money(200)), // 2 kr
+		PaymentMethod:   "kontant",
+	},
 
-	CivilStatus:     ptr(models.Cohabiting),
-	ChildrenUnder18: ptr(uint(10)),
-	ChildrenOver18:  ptr(uint(10)),
-	ChildSupport:    ptr(float32(4000)),
+	Assets: models.AssetQuestions{
+		AssetSeen:                ptr(true),
+		AssetAccessible:          ptr(false),
+		AssetStatus:              "",
+		AssetStatusNote:          "",
+		AssetCleanliness:         "",
+		AssetCleanlinessNote:     "",
+		AssetConfirmedOwner:      nil,
+		AssetKeysDelivered:       nil,
+		SFSigned:                 nil,
+		OdometerKm:               nil,
+		ContractType:             "",
+		IsSeized:                 nil,
+		HandoverStrategy:         "",
+		HandoverStrategyNote:     "",
+		TransportProvider:        "",
+		FinalVehicleLocation:     "",
+		FinalVehicleLocationNote: "",
+	},
 
-	HasWork:  ptr(true),
-	Position: "CEO",
-	Salary:   ptr(float32(50000)),
+	Monetary: models.MonetaryQuestions{
+		CivilStatus:    "Cohabiting",
+		ChildrenOver18: nil,
+		HasWork:        nil,
+		Position:       "",
+		NetSalaryMin:   ptr(models.Money(200)),
+		NetSalaryMax:   ptr(models.Money(400)),
 
-	Creditor:   "nordania",
-	DebtAmount: ptr(float32(1000000)),
-	Settlement: "forlig",
+		IncomePaymentMin: ptr(models.Money(200)),
+		IncomePaymentMax: ptr(models.Money(400)),
 
-	PropertyType:      ptr(models.PropertyApartment),
-	MaintenanceStatus: ptr(models.Deteriorated),
+		MonthlyDisposableMin: ptr(models.Money(200)),
+		MonthlyDisposableMax: ptr(models.Money(400)),
 
-	OwnershipStatus: "renter",
+		DebtAmountPaid: ptr(models.Money(200)),
+	},
+	Property: models.PropertyQuestions{
+		PropertyType:      ptr(models.PropertyFreestandingHouse),
+		OvergrownGarden:   ptr(true),
+		MailboxFull:       nil,
+		BrokenWindows:     nil,
+		AbandonedVehicles: nil,
+		TrashOverflown:    nil,
+		ForsaleSign:       nil,
+	},
 
 	Comments: "Meget grimt hus, det er nok forfaldendt",
 }
