@@ -515,93 +515,218 @@ var visitResponse2 = models.VisitResponse{
 	ActTime: "10:00 AM",
 	ActLat:  "37.7749",
 	ActLong: "-122.4194",
+
 	// Response data
-	DebitorIsHome: ptr(true),
+	Contact: models.ContactQuestions{
+		MailboxName:   "",
+		DebitorMet:    ptr(true), // Migrated from DebitorIsHome: ptr(true)
+		OtherMet:      nil,
+		OtherTitle:    "",
+		WorkerMet:     nil,
+		WorkerTitle:   "",
+		CorrectedTlf:  "",
+		CorrectedMail: "",
+	},
 
-	AssetAtAddress: ptr(true),
-	AssetDamaged:   ptr(false),
+	Payment: models.PaymentQuestions{
+		ReceivedPayment: nil,
+		PaymentAmount:   nil,
+		PaymentMethod:   "",
+	},
 
-	CivilStatus:     ptr(models.Married),
-	ChildrenUnder18: ptr(uint(10)),
-	ChildrenOver18:  ptr(uint(10)),
-	ChildSupport:    ptr(float32(4000.0)),
+	Assets: models.AssetQuestions{
+		AssetSeen:                ptr(true), // Migrated from AssetAtAddress: ptr(true)
+		AssetAccessible:          ptr(false),
+		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)
+		AssetStatusNote:          "",
+		AssetCleanliness:         "",
+		AssetCleanlinessNote:     "",
+		AssetConfirmedOwner:      nil,
+		AssetKeysDelivered:       nil,
+		SFSigned:                 nil,
+		OdometerKm:               nil,
+		ContractType:             "",
+		IsSeized:                 nil,
+		HandoverStrategy:         "",
+		HandoverStrategyNote:     "",
+		TransportProvider:        "",
+		FinalVehicleLocation:     "",
+		FinalVehicleLocationNote: "",
+	},
 
-	HasWork:  ptr(true),
-	Position: "CEO",
-	Salary:   ptr(float32(50000)),
+	Monetary: models.MonetaryQuestions{
+		CivilStatus:    string(models.Married), // Migrated from CivilStatus: ptr(models.Married)
+		ChildrenOver18: ptr(uint(10)),
+		HasWork:        ptr(true),
+		Position:       "CEO",
+		NetSalaryMin:   ptr(models.Money(5000000)), // 50.000 kr in cents
+		NetSalaryMax:   ptr(models.Money(5000000)), // 50.000 kr in cents
 
-	Creditor:   "nordania",
-	DebtAmount: ptr(float32(1000000)),
-	Settlement: "forlig",
+		IncomePaymentMin:     nil,
+		IncomePaymentMax:     nil,
+		MonthlyDisposableMin: nil,
+		MonthlyDisposableMax: nil,
+		// Custom Case/Debt details migrated into MonetaryQuestions
 
-	PropertyType:      ptr(models.PropertyFreestandingHouse),
-	MaintenanceStatus: ptr(models.WellMaintained),
+		DebtAmountPaid: ptr(models.Money(100000000)), // 1.000.000 kr in cents,
 
-	OwnershipStatus: "owner",
+	},
+
+	Property: models.PropertyQuestions{
+		PropertyType:      ptr(models.PropertyFreestandingHouse),
+		OvergrownGarden:   nil,
+		MailboxFull:       nil,
+		BrokenWindows:     nil,
+		AbandonedVehicles: nil,
+		TrashOverflown:    nil,
+		ForsaleSign:       nil,
+	},
 
 	Comments: "Meget flot hus, han er tydeligvis rig",
 }
+
 var visitResponse3 = models.VisitResponse{
 	VisitID: visit1.ID,
 	ActDate: time.Now(),
 	ActTime: "10:00 AM",
 	ActLat:  "37.7749",
 	ActLong: "-122.4194",
+
 	// Response data
-	DebitorIsHome: ptr(true),
+	Contact: models.ContactQuestions{
+		MailboxName:   "",
+		DebitorMet:    ptr(true), // Migrated from DebitorIsHome: ptr(true)
+		OtherMet:      nil,
+		OtherTitle:    "",
+		WorkerMet:     nil,
+		WorkerTitle:   "",
+		CorrectedTlf:  "",
+		CorrectedMail: "",
+	},
 
-	AssetAtAddress: ptr(true),
-	AssetDamaged:   ptr(false),
+	Payment: models.PaymentQuestions{
+		ReceivedPayment: nil,
+		PaymentAmount:   nil,
+		PaymentMethod:   "",
+	},
 
-	CivilStatus:     ptr(models.Married),
-	ChildrenUnder18: ptr(uint(0)),
-	ChildrenOver18:  ptr(uint(0)),
-	ChildSupport:    ptr(float32(0)),
+	Assets: models.AssetQuestions{
+		AssetSeen:                ptr(true), // Migrated from AssetAtAddress: ptr(true)
+		AssetAccessible:          ptr(false),
+		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)
+		AssetStatusNote:          "",
+		AssetCleanliness:         "",
+		AssetCleanlinessNote:     "",
+		AssetConfirmedOwner:      nil,
+		AssetKeysDelivered:       nil,
+		SFSigned:                 nil,
+		OdometerKm:               nil,
+		ContractType:             "",
+		IsSeized:                 nil,
+		HandoverStrategy:         "",
+		HandoverStrategyNote:     "",
+		TransportProvider:        "",
+		FinalVehicleLocation:     "",
+		FinalVehicleLocationNote: "",
+	},
 
-	HasWork:  ptr(true),
-	Position: "janitor",
-	Salary:   ptr(float32(50000)),
+	Monetary: models.MonetaryQuestions{
+		CivilStatus:    string(models.Married), // Migrated from CivilStatus: ptr(models.Married)
+		ChildrenOver18: ptr(uint(0)),
+		HasWork:        ptr(true),
+		Position:       "janitor",
+		NetSalaryMin:   ptr(models.Money(5000000)), // 50.000 kr in cents
+		NetSalaryMax:   ptr(models.Money(5000000)), // 50.000 kr in cents
 
-	Creditor:   "nordania",
-	DebtAmount: ptr(float32(1000000)),
-	Settlement: "forlig",
+		IncomePaymentMin:     nil,
+		IncomePaymentMax:     nil,
+		MonthlyDisposableMin: nil,
+		MonthlyDisposableMax: nil,
+		DebtAmountPaid:       ptr(models.Money(100000000)), // 1.000.000 kr in cents,
+	},
 
-	PropertyType:      ptr(models.PropertyApartment),
-	MaintenanceStatus: ptr(models.Deteriorated),
-
-	OwnershipStatus: "owner",
+	Property: models.PropertyQuestions{
+		PropertyType:      ptr(models.PropertyApartment),
+		OvergrownGarden:   nil,
+		MailboxFull:       nil,
+		BrokenWindows:     nil,
+		AbandonedVehicles: nil,
+		TrashOverflown:    nil,
+		ForsaleSign:       nil,
+	},
 
 	Comments: "Meget flot hus, han er tydeligvis rig",
 }
+
 var visitResponse4 = models.VisitResponse{
 	VisitID: visit1.ID,
 	ActDate: time.Now(),
 	ActTime: "10:00 AM",
 	ActLat:  "37.7749",
 	ActLong: "-122.4194",
+
 	// Response data
-	DebitorIsHome: ptr(false),
+	Contact: models.ContactQuestions{
+		MailboxName:   "",
+		DebitorMet:    ptr(false), // Migrated from DebitorIsHome: ptr(false)
+		OtherMet:      nil,
+		OtherTitle:    "",
+		WorkerMet:     nil,
+		WorkerTitle:   "",
+		CorrectedTlf:  "",
+		CorrectedMail: "",
+	},
 
-	AssetAtAddress: ptr(false),
-	AssetDamaged:   ptr(false),
+	Payment: models.PaymentQuestions{
+		ReceivedPayment: nil,
+		PaymentAmount:   nil,
+		PaymentMethod:   "",
+	},
 
-	CivilStatus:     ptr(models.Single),
-	ChildrenUnder18: ptr(uint(10)),
-	ChildrenOver18:  ptr(uint(10)),
-	ChildSupport:    ptr(float32(4000)),
+	Assets: models.AssetQuestions{
+		AssetSeen:                ptr(false), // Migrated from AssetAtAddress: ptr(false)
+		AssetAccessible:          ptr(false),
+		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)
+		AssetStatusNote:          "",
+		AssetCleanliness:         "",
+		AssetCleanlinessNote:     "",
+		AssetConfirmedOwner:      nil,
+		AssetKeysDelivered:       nil,
+		SFSigned:                 nil,
+		OdometerKm:               nil,
+		ContractType:             "",
+		IsSeized:                 nil,
+		HandoverStrategy:         "",
+		HandoverStrategyNote:     "",
+		TransportProvider:        "",
+		FinalVehicleLocation:     "",
+		FinalVehicleLocationNote: "",
+	},
 
-	HasWork:  ptr(true),
-	Position: "CEO",
-	Salary:   ptr(float32(50000)),
+	Monetary: models.MonetaryQuestions{
+		CivilStatus:    string(models.Single), // Migrated from CivilStatus: ptr(models.Single)
+		ChildrenOver18: ptr(uint(10)),
+		HasWork:        ptr(true),
+		Position:       "CEO",
+		NetSalaryMin:   ptr(models.Money(5000000)), // 50.000 kr in cents
+		NetSalaryMax:   ptr(models.Money(5000000)), // 50.000 kr in cents
 
-	Creditor:   "nordania",
-	DebtAmount: ptr(float32(1000000)),
-	Settlement: "forlig",
+		IncomePaymentMin:     nil,
+		IncomePaymentMax:     nil,
+		MonthlyDisposableMin: nil,
+		MonthlyDisposableMax: nil,
+		DebtAmountPaid:       ptr(models.Money(100000000)),
+	},
 
-	PropertyType:      ptr(models.PropertySummerHouse),
-	MaintenanceStatus: ptr(models.WellMaintained),
-
-	OwnershipStatus: "renter",
+	Property: models.PropertyQuestions{
+		PropertyType:      ptr(models.PropertySummerHouse),
+		OvergrownGarden:   nil,
+		MailboxFull:       nil,
+		BrokenWindows:     nil,
+		AbandonedVehicles: nil,
+		TrashOverflown:    nil,
+		ForsaleSign:       nil,
+	},
 
 	Comments: "Meget flot hus, han er tydeligvis rig",
 }
