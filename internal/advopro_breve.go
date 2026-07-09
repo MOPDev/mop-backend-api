@@ -127,7 +127,7 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("no document found for case %s", visit.Sagsnr)
+		return nil, fmt.Errorf("no document found for case %d", visit.Sagsnr)
 	}
 
 	letterPath := resolveDocPath(toString(rows[0]["Placering"]), toString(rows[0]["Filnavn"]))
