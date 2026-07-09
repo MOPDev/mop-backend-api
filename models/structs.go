@@ -315,7 +315,8 @@ type MonetaryQuestions struct {
 	CivilStatus string `json:"civil_status"`
 
 	//children At home
-	ChildrenOver18 *uint `json:"children_over_18"`
+	ChildrenOver18  *uint `json:"children_over_18"`
+	ChildrenUnder18 *uint `json:"children_under_18"`
 	//ChildSupport   *float32 `json:"child_support"`
 
 	//work - rough amounts

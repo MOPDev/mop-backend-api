@@ -500,7 +500,7 @@ func DeleteHistorik(historikId int, expectedTekst, deletedBy string, dryRun bool
 func AddNoteToAdvopro(visit models.Visit) bool {
 	note := ""
 
-	if *visit.VisitResponse.DebitorIsHome {
+	if *visit.VisitResponse.Contact.DebitorMet {
 		note = note + "The debitor is home"
 	} else {
 		note = note + "The debitor was not home"
