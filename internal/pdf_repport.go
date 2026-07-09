@@ -17,8 +17,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	fpdf "github.com/phpdave11/gofpdf"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
 
 func SaveFile(c *gin.Context, file *multipart.FileHeader) (string, error) {
@@ -84,15 +82,6 @@ func optionalUintToStr(val *uint) string {
 	return fmt.Sprint(*val)
 }
 
-// Helper to handle optional money (float32)
-func optionalMoneyToStr(val *float32) string {
-	if val == nil {
-		return "-"
-	}
-	p := message.NewPrinter(language.Danish)
-	return p.Sprintf("%.2f kr", *val)
-}
-
 func optionalBoolToStr(val *bool) string {
 	if val == nil {
 		return "-" // Or "Ingen data"
@@ -135,14 +124,6 @@ func optionalpropertyTypeToString(propertytype *models.PropertyType) string {
 	}
 
 	return string(*propertytype)
-}
-
-func optionalMaintenanceToString(maintain_status *models.MaintenanceStatus) string {
-	if maintain_status == nil || *maintain_status == "" {
-		return "-"
-	}
-
-	return string(*maintain_status)
 }
 
 var pdfnormalFontSize float64 = 10
@@ -276,20 +257,30 @@ func fillLifeBox(pdf *fpdf.Fpdf, v models.Visit, LifeBoxX float64, LifeBoxY floa
 	questionRow(pdf, "Børnepenge", hasChildSupportStr, childSupportDetails)
 	*/
 	salary := ""
+	income := ""
 	if v.VisitResponse.Monetary.HasWork != nil {
 		if *v.VisitResponse.Monetary.HasWork {
-			salary = v.VisitResponse.Monetary.NetSalaryMin.FormatDK() + " " + v.VisitResponse.Monetary.NetSalaryMax.FormatDK()
+			if v.VisitResponse.Monetary.NetSalaryMin != nil && v.VisitResponse.Monetary.NetSalaryMax != nil {
+				salary = v.VisitResponse.Monetary.NetSalaryMin.FormatDK() + " " + v.VisitResponse.Monetary.NetSalaryMax.FormatDK()
+			}
 		}
+	}
+	if v.VisitResponse.Monetary.IncomePaymentMin != nil && v.VisitResponse.Monetary.IncomePaymentMax != nil {
+		income = v.VisitResponse.Monetary.IncomePaymentMin.FormatDK() + " " + v.VisitResponse.Monetary.IncomePaymentMax.FormatDK()
+	}
+	monthlydisposable := ""
+	if v.VisitResponse.Monetary.MonthlyDisposableMin != nil && v.VisitResponse.Monetary.MonthlyDisposableMax != nil {
+		monthlydisposable = v.VisitResponse.Monetary.MonthlyDisposableMin.FormatDK() + " " + v.VisitResponse.Monetary.MonthlyDisposableMax.FormatDK()
 	}
 
 	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
 	questionRow(pdf, "Arbejde inkosmt", "", salary)
-	questionRow(pdf, "Off. ydelser", "", v.VisitResponse.Monetary.IncomePaymentMin.FormatDK()+" "+v.VisitResponse.Monetary.IncomePaymentMax.FormatDK())
+	questionRow(pdf, "Off. ydelser", "", income)
 
 	totalStr := "-" // total of offentlige ydelser and inkomst
 
 	questionRow(pdf, "Total udbetalt", "", totalStr)
-	questionRow(pdf, "Rådighedsbeløb", "", v.VisitResponse.Monetary.MonthlyDisposableMin.FormatDK()+"-"+v.VisitResponse.Monetary.MonthlyDisposableMax.FormatDK())
+	questionRow(pdf, "Rådighedsbeløb", "", monthlydisposable)
 
 	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.Property.PropertyType), "")
 	// TODO: implement a custom visual aid for
