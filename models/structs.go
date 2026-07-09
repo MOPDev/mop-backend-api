@@ -202,6 +202,8 @@ type VisitResponse struct {
 type ContactQuestions struct {
 	// quick option to choose the expected name
 	MailboxName string `json:"mailbox_name"`
+	// letter left to prove auditor visited when nobody answered
+	LetterDelivered *bool `json:"letter_delivered"`
 
 	// hvis CPR og kobekontrakt
 	DebitorMet *bool `json:"debitor_met"` // Pointer so it can be null, not just false
