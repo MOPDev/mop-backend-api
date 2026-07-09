@@ -27,7 +27,7 @@ JOIN
 JOIN
 	vwInkassoSag s ON s.Sagsnr = f.Sagsnr
 WHERE
-	f.Status in (4,5,7,70,71,72,73)
+	f.Status in (4,5) -- ,7,70,71,72,73)
 `
 
 const SagsnrQuery = `
