@@ -84,6 +84,7 @@ func migrateTables() {
 		&models.VisitStatus{},
 		&models.VisitStatusLog{},
 		&models.VisitResponseImage{},
+		&models.Asset{},
 		&models.LoginAttempt{},
 		&models.AuthAttempt{},
 		&models.VisitType{},
