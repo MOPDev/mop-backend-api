@@ -118,6 +118,7 @@ func VisitCreation(c *gin.Context) {
 						AdvoproDebitorId: int(debtor.DebitorId),
 						Risk:             debitorData.Risk,
 						SSN:              debitorData.SSN,
+						Iscompany:        debitorData.Iscompany,
 					}
 					initializers.DB.Create(&debitor)
 					existingDebitor = debitor

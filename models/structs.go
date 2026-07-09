@@ -102,6 +102,7 @@ type Debitor struct {
 	AdvoproDebitorId int       `json:"Advopro_debitor_id"`
 	Risk             Risk      `json:"risk"` // Low, Medium, High
 	SSN              string    `json:"ssn"`
+	Iscompany        bool      `json:"is_company"`
 
 	Notes  string  `json:"notes"`
 	Visits []Visit `gorm:"many2many:visit_debitors;"`
@@ -294,9 +295,10 @@ type AssetQuestions struct {
 
 type Asset struct {
 	gorm.Model
-	Regnr        string
-	ImagePath    string
-	OriginalName string
+	VisitResponseID uint `json:"visit_response_id"`
+	Regnr           string
+	ImagePath       string
+	OriginalName    string
 }
 
 type PropertyQuestions struct {
