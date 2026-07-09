@@ -462,7 +462,7 @@ var visitResponse1 = models.VisitResponse{
 		PaymentMethod:   "kontant",
 	},
 
-	Assets: models.AssetQuestions{
+	Asset: models.AssetQuestions{
 		AssetSeen:                ptr(true),
 		AssetAccessible:          ptr(false),
 		AssetStatus:              "",
@@ -536,7 +536,7 @@ var visitResponse2 = models.VisitResponse{
 		PaymentMethod:   "",
 	},
 
-	Assets: models.AssetQuestions{
+	Asset: models.AssetQuestions{
 		AssetSeen:                ptr(true), // Migrated from AssetAtAddress: ptr(true)
 		AssetAccessible:          ptr(false),
 		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)
@@ -612,7 +612,7 @@ var visitResponse3 = models.VisitResponse{
 		PaymentMethod:   "",
 	},
 
-	Assets: models.AssetQuestions{
+	Asset: models.AssetQuestions{
 		AssetSeen:                ptr(true), // Migrated from AssetAtAddress: ptr(true)
 		AssetAccessible:          ptr(false),
 		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)
@@ -685,7 +685,7 @@ var visitResponse4 = models.VisitResponse{
 		PaymentMethod:   "",
 	},
 
-	Assets: models.AssetQuestions{
+	Asset: models.AssetQuestions{
 		AssetSeen:                ptr(false), // Migrated from AssetAtAddress: ptr(false)
 		AssetAccessible:          ptr(false),
 		AssetStatus:              "", // Migrated from AssetDamaged: ptr(false)

@@ -188,7 +188,7 @@ type VisitResponse struct {
 	// nested questions
 	Contact  ContactQuestions  `json:"contact" gorm:"embedded;embeddedPrefix:contact_"`
 	Payment  PaymentQuestions  `json:"payment" gorm:"embedded;embeddedPrefix:payment_"`
-	Assets   AssetQuestions    `json:"assets" gorm:"embedded;embeddedPrefix:asset_"`
+	Asset    AssetQuestions    `json:"assets" gorm:"embedded;embeddedPrefix:asset_"`
 	Property PropertyQuestions `json:"property" gorm:"embedded;embeddedPrefix:property_"`
 	Monetary MonetaryQuestions `json:"monetary" gorm:"embedded;embeddedPrefix:monetary_"`
 
