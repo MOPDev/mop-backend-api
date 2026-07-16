@@ -306,12 +306,14 @@ type Asset struct {
 type PropertyQuestions struct {
 	PropertyType *PropertyType `json:"property_type"`
 	// if below are not descriptive enough, write in the comments
-	OvergrownGarden   *bool
-	MailboxFull       *bool
-	BrokenWindows     *bool
-	AbandonedVehicles *bool
-	TrashOverflown    *bool
-	ForsaleSign       *bool
+	OvergrownGarden   *bool `json:"overgrown_garden"`
+	MailboxFull       *bool `json:"mailbox_full"`
+	BrokenWindows     *bool `json:"broken_windows"`
+	AbandonedVehicles *bool `json:"abandoned_vehicles"`
+	TrashOverflown    *bool `json:"trash_overflown"`
+	ForsaleSign       *bool `json:"forsale_sign"`
+
+	Note string `json:"note"`
 }
 
 type MonetaryQuestions struct {
