@@ -296,6 +296,7 @@ func CreateVisitResponse(c *gin.Context) {
 	user, ok := getVerifyUser(c)
 	if !ok {
 		c.JSON(401, gin.H{"error": "verification failed"})
+		return
 	}
 
 	var visitResponse models.VisitResponse
@@ -436,6 +437,25 @@ func UploadAssetImage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, asset)
+}
+
+// POST /visit-response/:id/complete
+func CompleteVisitResponse(c *gin.Context) {
+	user, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "verification failed"})
+		return
+	}
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+
+	var vr models.VisitResponse
+	if err := initializers.DB.First(&vr, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "not found"})
+		return
+	}
+
+	internal.UpdateVisitStatus(vr.VisitID, 4, user.ID)
+	c.JSON(200, gin.H{"ok": true})
 }
 
 func AktivitersRapport(c *gin.Context) {
