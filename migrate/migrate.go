@@ -12,6 +12,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // ptr is a generic helper that returns a pointer to the value passed in
@@ -163,11 +164,12 @@ func fullreset() {
 		&models.ActivityLog{},
 	)
 
-	initializers.DB.Create(&status1)
-	initializers.DB.Create(&status2)
-	initializers.DB.Create(&status3)
-	initializers.DB.Create(&status4)
-	initializers.DB.Create(&status5)
+	for _, s := range statuses {
+		initializers.DB.
+			Where(models.VisitStatus{Model: gorm.Model{ID: s.ID}}).
+			Assign(models.VisitStatus{Text: s.Text}).
+			FirstOrCreate(&s)
+	}
 
 	//Hash the password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
@@ -245,20 +247,13 @@ func fullreset() {
 }
 
 // placeholder information
-var status1 = models.VisitStatus{
-	Text: "Not planned",
-}
-var status2 = models.VisitStatus{
-	Text: "planned",
-}
-var status3 = models.VisitStatus{
-	Text: "ready to visit",
-}
-var status4 = models.VisitStatus{
-	Text: "to review",
-}
-var status5 = models.VisitStatus{
-	Text: "exported",
+var statuses = []models.VisitStatus{
+	{Model: gorm.Model{ID: 1}, Text: "Not planned"},
+	{Model: gorm.Model{ID: 2}, Text: "planned"},
+	{Model: gorm.Model{ID: 3}, Text: "ready to visit"},
+	{Model: gorm.Model{ID: 4}, Text: "to review"},
+	{Model: gorm.Model{ID: 5}, Text: "exported"},
+	{Model: gorm.Model{ID: 6}, Text: "pending completion"},
 }
 
 var type1 = models.VisitType{

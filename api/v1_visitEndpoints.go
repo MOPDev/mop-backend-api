@@ -293,7 +293,11 @@ func Visit_responses(c *gin.Context) {
 
 // POST /visit-response (form data only)
 func CreateVisitResponse(c *gin.Context) {
-	user, _ := getVerifyUser(c)
+	user, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "verification failed"})
+	}
+
 	var visitResponse models.VisitResponse
 	if err := c.ShouldBindJSON(&visitResponse); err != nil {
 		logger.Error(err.Error())
@@ -301,13 +305,19 @@ func CreateVisitResponse(c *gin.Context) {
 		return
 	}
 
-	if err := initializers.DB.Create(&visitResponse).Error; err != nil {
+	// ponytail: upsert on visit_id so a retry after failed image upload
+	// re-uses the existing response instead of erroring out
+	err := initializers.DB.
+		Where(models.VisitResponse{VisitID: visitResponse.VisitID}).
+		Assign(visitResponse).
+		FirstOrCreate(&visitResponse).Error
+	if err != nil {
 		logger.Error(err.Error())
 		c.JSON(500, gin.H{"error": "Failed to save visit response"})
 		return
 	}
 
-	internal.UpdateVisitStatus(visitResponse.VisitID, 4, user.ID)
+	internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
 	c.JSON(200, visitResponse)
 }
 
