@@ -188,7 +188,7 @@ type VisitResponse struct {
 	// nested questions
 	Contact  ContactQuestions  `json:"contact" gorm:"embedded;embeddedPrefix:contact_"`
 	Payment  PaymentQuestions  `json:"payment" gorm:"embedded;embeddedPrefix:payment_"`
-	Asset    AssetQuestions    `json:"assets" gorm:"embedded;embeddedPrefix:asset_"`
+	Asset    AssetQuestions    `json:"asset" gorm:"embedded;embeddedPrefix:asset_"`
 	Property PropertyQuestions `json:"property" gorm:"embedded;embeddedPrefix:property_"`
 	Monetary MonetaryQuestions `json:"monetary" gorm:"embedded;embeddedPrefix:monetary_"`
 
@@ -297,10 +297,10 @@ type AssetQuestions struct {
 
 type Asset struct {
 	gorm.Model
-	VisitResponseID uint `json:"visit_response_id"`
-	Regnr           string
-	ImagePath       string
-	OriginalName    string
+	VisitResponseID uint   `json:"visit_response_id"`
+	Regnr           string `json:"regnr"`
+	ImagePath       string `json:"image_path"`
+	OriginalName    string `json:"original_name"`
 }
 
 type PropertyQuestions struct {

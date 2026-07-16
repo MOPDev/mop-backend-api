@@ -318,6 +318,27 @@ func CreateVisitResponse(c *gin.Context) {
 		return
 	}
 
+	// ponytail: retries re-post the full other_assets list; wipe old rows for
+	// this visit response first so we don't accumulate duplicates per retry
+	if err := initializers.DB.
+		Where("visit_response_id = ?", visitResponse.ID).
+		Delete(&models.Asset{}).Error; err != nil {
+		logger.Error(err.Error())
+		c.JSON(500, gin.H{"error": "Failed to reset other assets"})
+		return
+	}
+	if len(visitResponse.OtherAssets) > 0 {
+		for i := range visitResponse.OtherAssets {
+			visitResponse.OtherAssets[i].ID = 0
+			visitResponse.OtherAssets[i].VisitResponseID = visitResponse.ID
+		}
+		if err := initializers.DB.Create(&visitResponse.OtherAssets).Error; err != nil {
+			logger.Error(err.Error())
+			c.JSON(500, gin.H{"error": "Failed to save other assets"})
+			return
+		}
+	}
+
 	internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
 	c.JSON(200, visitResponse)
 }
