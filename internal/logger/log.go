@@ -1,8 +1,13 @@
 package logger
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/models"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -34,6 +39,17 @@ func Error(msg string) {
 		colorRed, colorReset,
 		msg,
 	)
+	currentVal, err := json.Marshal(gin.H{"text": msg})
+	if err != nil {
+		return // ponytail: can't persist, console log above already happened
+	}
+
+	entry := models.ActivityLog{
+		ActingUserID: 0,
+		ActionType:   "ERROR LOGGER",
+		CurrentVal:   currentVal,
+	}
+	initializers.DB.Create(&entry)
 }
 
 func Infof(format string, args ...any)  { Info(fmt.Sprintf(format, args...)) }

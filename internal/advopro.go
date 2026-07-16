@@ -186,8 +186,9 @@ func FetchDebitorData(debitorNum int64) *models.Debitor {
 	mobilePhone, ok5 := debitor["Mobiltlf"].(string)
 	workPhone, ok6 := debitor["Arbejdstlf"].(string)
 	email, ok7 := debitor["EPost"].(string)
+	company, ok8 := debitor["CVRnr"].(string)
 
-	if !ok1 && !ok2 && !ok3 && !ok4 && !ok5 && !ok6 && !ok7 {
+	if !ok1 && !ok2 && !ok3 && !ok4 && !ok5 && !ok6 && !ok7 && !ok8 {
 		logger.Error("Formatting from the database has gone wrong")
 		return nil
 	}
@@ -211,6 +212,12 @@ func FetchDebitorData(debitorNum int64) *models.Debitor {
 		gender = models.Other
 	}
 
+	iscompany := false
+	if len(company) > 6 {
+		// then there is a CVR number meaning it is a company
+		iscompany = true
+	}
+
 	deb := models.Debitor{
 		AdvoproDebitorId: int(debitorNum),
 		Name:             name,
@@ -219,6 +226,7 @@ func FetchDebitorData(debitorNum int64) *models.Debitor {
 		Email:            email,
 		Phone:            phoneNr,
 		PhoneWork:        workPhone,
+		Iscompany:        iscompany,
 	}
 
 	return &deb

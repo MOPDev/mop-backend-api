@@ -17,8 +17,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	fpdf "github.com/phpdave11/gofpdf"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
 
 func SaveFile(c *gin.Context, file *multipart.FileHeader) (string, error) {
@@ -84,15 +82,6 @@ func optionalUintToStr(val *uint) string {
 	return fmt.Sprint(*val)
 }
 
-// Helper to handle optional money (float32)
-func optionalMoneyToStr(val *float32) string {
-	if val == nil {
-		return "-"
-	}
-	p := message.NewPrinter(language.Danish)
-	return p.Sprintf("%.2f kr", *val)
-}
-
 func optionalBoolToStr(val *bool) string {
 	if val == nil {
 		return "-" // Or "Ingen data"
@@ -103,13 +92,71 @@ func optionalBoolToStr(val *bool) string {
 	return "NEJ"
 }
 
+// moneyRangeStr formats a (min, max) Money pair for display.
+// Returns "-" if either pointer is nil.
+// Returns e.g. "1.000 kr. - 2.000 kr." when both are present.
+func moneyRangeStr(min, max *models.Money) string {
+	if min == nil || max == nil {
+		return "-"
+	}
+	return min.FormatDK() + " - " + max.FormatDK()
+}
+
+// computeTotalDisposable sums NetSalaryMin+Max and IncomePaymentMin+Max.
+// monetary must not be nil. Returns a models.Money total (int64 sum).
+func computeTotalDisposable(monetary models.MonetaryQuestions) *models.Money {
+	var total int64 = 0
+	if monetary.NetSalaryMin != nil {
+		total += int64(*monetary.NetSalaryMin)
+	}
+	if monetary.NetSalaryMax != nil {
+		total += int64(*monetary.NetSalaryMax)
+	}
+	if monetary.IncomePaymentMin != nil {
+		total += int64(*monetary.IncomePaymentMin)
+	}
+	if monetary.IncomePaymentMax != nil {
+		total += int64(*monetary.IncomePaymentMax)
+	}
+	money := models.Money(total)
+	return &money
+}
+
+// propertyIssuesStr builds a comma-separated list of active (true) property
+// issue flags, or "Ingen bemærkninger" if none are set.
+func propertyIssuesStr(p models.PropertyQuestions) string {
+	var active []string
+	if p.OvergrownGarden != nil && *p.OvergrownGarden {
+		active = append(active, "Overgrow haven")
+	}
+	if p.MailboxFull != nil && *p.MailboxFull {
+		active = append(active, "Postkassen fuld")
+	}
+	if p.BrokenWindows != nil && *p.BrokenWindows {
+		active = append(active, "Ødelagte vinduer")
+	}
+	if p.AbandonedVehicles != nil && *p.AbandonedVehicles {
+		active = append(active, "Efterladte køretøjer")
+	}
+	if p.TrashOverflown != nil && *p.TrashOverflown {
+		active = append(active, "Affald overfyldt")
+	}
+	if p.ForsaleSign != nil && *p.ForsaleSign {
+		active = append(active, "Til salg-skilt")
+	}
+	if len(active) == 0 {
+		return "Ingen bemærk."
+	}
+	return strings.Join(active, ", ")
+}
+
 func questionRow(pdf *fpdf.Fpdf, label string, answer string, details string) {
 
 	// should sum to 90
 	//
-	labelW := 42.0
-	answerW := 20.0
-	detailW := 30.0
+	labelW := 40.0
+	answerW := 25.0
+	detailW := 17.0
 	x, _ := pdf.GetXY()
 
 	pdf.SetFontStyle("B")
@@ -125,23 +172,8 @@ func questionRow(pdf *fpdf.Fpdf, label string, answer string, details string) {
 	pdf.SetXY(x, y)
 }
 
-func civilStatusToString(status *models.CivilStatus) string {
-	// Check if it's nil OR if it's pointing to an empty string
-	if status == nil || *status == "" {
-		return "-"
-	}
-
-	switch *status {
-	case models.Married:
-		return "Gift"
-	case models.Cohabiting:
-		return "Samboende"
-	case models.Single:
-		return "Enlig"
-	}
-
-	// If it has a value, but it's not one of the 3 recognized constants
-	return "Angivet forkert"
+func civilStatusToString(status string) string {
+	return status
 }
 
 func optionalpropertyTypeToString(propertytype *models.PropertyType) string {
@@ -150,14 +182,6 @@ func optionalpropertyTypeToString(propertytype *models.PropertyType) string {
 	}
 
 	return string(*propertytype)
-}
-
-func optionalMaintenanceToString(maintain_status *models.MaintenanceStatus) string {
-	if maintain_status == nil || *maintain_status == "" {
-		return "-"
-	}
-
-	return string(*maintain_status)
 }
 
 var pdfnormalFontSize float64 = 10
@@ -234,7 +258,15 @@ func pdfHeader(pdf *fpdf.Fpdf, v models.Visit) {
 		pdf.SetX(20)                           // Further indent for details
 		pdf.SetFontSize(pdfnormalFontSize - 1) // Optional: slightly smaller text for details
 
-		contactLine := fmt.Sprintf("tlf: %s  |  mail: %s  |  debitorId: %s", phone, deb.Email, AdvoproDebitor)
+		// if the values have been checked by the auditor then we mark and use those instead
+		if v.VisitResponse.Contact.CorrectedTlf != "" {
+			phone = v.VisitResponse.Contact.CorrectedTlf + "*"
+		}
+		email := deb.Email
+		if v.VisitResponse.Contact.CorrectedMail != "" {
+			email = v.VisitResponse.Contact.CorrectedMail + "*"
+		}
+		contactLine := fmt.Sprintf("tlf: %s  |  mail: %s  |  debitorId: %s", phone, email, AdvoproDebitor)
 		pdf.CellFormat(0, 5, contactLine, "", 1, "L", false, 0, "")
 
 		pdf.Ln(1) // Small space between different debitors
@@ -247,8 +279,8 @@ func pdfHeader(pdf *fpdf.Fpdf, v models.Visit) {
 	pdf.SetXY(box_cornerX, box_cornerY+box_heigt-7)
 	pdf.CellFormat(20, 6, "Konsulent:", "", 0, "", false, 0, "")
 	pdf.CellFormat(40, 6, v.User.Name, "", 0, "", false, 0, "")
-	pdf.CellFormat(10, 6, "tlf:", "", 0, "", false, 0, "")
-	pdf.CellFormat(40, 6, v.User.Phone, "", 0, "", false, 0, "")
+	//pdf.CellFormat(10, 6, "tlf:", "", 0, "", false, 0, "")
+	//pdf.CellFormat(40, 6, v.User.Phone, "", 0, "", false, 0, "")
 	//pdf.CellFormat(25, 6, "tidsforbrug:", "", 0, "", false, 0, "")
 	//pdf.CellFormat(0, 6, duration.String(), "", 1, "R", false, 0, "")
 
@@ -264,52 +296,22 @@ func fillLifeBox(pdf *fpdf.Fpdf, v models.Visit, LifeBoxX float64, LifeBoxY floa
 	paddingY := 6.0
 	// right side
 	pdf.SetXY(LifeBoxX+paddingX, LifeBoxY+paddingY)
+	contact := v.VisitResponse.Contact
 
-	questionRow(pdf, "Debitor hjemme", optionalBoolToStr(v.VisitResponse.DebitorIsHome), "")
-	questionRow(pdf, "Civilstatus", civilStatusToString(v.VisitResponse.CivilStatus), "")
-	questionRow(pdf, "Børn u/18 hjemme", optionalUintToStr(v.VisitResponse.ChildrenUnder18), "")
-	questionRow(pdf, "bønr u/18 udeboende", optionalUintToStr(v.VisitResponse.ChildrenOver18), "")
-
-	// Complex logic for child support
-	childSupportDetails := ""
-	if v.VisitResponse.ChildSupport != nil {
-		childSupportDetails = optionalMoneyToStr(v.VisitResponse.ChildSupport)
+	questionRow(pdf, "Debitor hjemme", optionalBoolToStr(contact.DebitorMet), "")
+	questionRow(pdf, "Brev afleveret", optionalBoolToStr(contact.LetterDelivered), "")
+	questionRow(pdf, "Anden truffet", optionalBoolToStr(contact.OtherMet), contact.OtherTitle)
+	questionRow(pdf, "Arbejder truffet", optionalBoolToStr(contact.WorkerMet), contact.WorkerTitle)
+	if contact.CorrectedTlf != "" || contact.CorrectedMail != "" {
+		questionRow(pdf, "Rettet tlf/mail", contact.CorrectedTlf, contact.CorrectedMail)
 	}
 
-	// Assuming ChildSupport existence depends on if the float is > 0 or if the pointer is just present
-	hasChildSupportStr := "-"
-	if v.VisitResponse.ChildSupport != nil {
-		if *v.VisitResponse.ChildSupport > 0 {
-			hasChildSupportStr = "JA"
-		} else {
-			hasChildSupportStr = "NEJ"
-		}
-	}
-	questionRow(pdf, "Børnepenge", hasChildSupportStr, childSupportDetails)
+	questionRow(pdf, "Civilstatus", civilStatusToString(v.VisitResponse.Monetary.CivilStatus), "")
+	questionRow(pdf, "Børn u/18 hjemme", optionalUintToStr(v.VisitResponse.Monetary.ChildrenUnder18), "")
 
-	salary := ""
-	if v.VisitResponse.HasWork != nil {
-		if *v.VisitResponse.HasWork {
-			salary = optionalMoneyToStr(v.VisitResponse.Salary)
-		}
-	}
+	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.Property.PropertyType), "")
+	questionRow(pdf, "Ejendomsbemærk.", "", propertyIssuesStr(v.VisitResponse.Property))
 
-	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.HasWork), v.VisitResponse.Position)
-	questionRow(pdf, "Arbejde inkosmt", "", salary)
-	questionRow(pdf, "Off. ydelser", "", optionalMoneyToStr(v.VisitResponse.IncomePayment))
-
-	totalStr := "-"
-	if v.VisitResponse.Salary != nil && v.VisitResponse.IncomePayment != nil {
-		total := *v.VisitResponse.Salary + *v.VisitResponse.IncomePayment
-		totalStr = optionalMoneyToStr(&total)
-	}
-
-	questionRow(pdf, "Total udbetalt", "", totalStr)
-	questionRow(pdf, "Rådighedsbeløb", "", optionalMoneyToStr(v.VisitResponse.MonthlyDisposableAmount))
-
-	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.PropertyType), optionalMaintenanceToString((v.VisitResponse.MaintenanceStatus)))
-
-	questionRow(pdf, "Ejerskab?", "", v.VisitResponse.OwnershipStatus)
 }
 
 func fillCarBox(pdf *fpdf.Fpdf, v models.Visit, CarBoxX float64, CarBoxY float64, CarWidth float64) {
@@ -326,21 +328,36 @@ func fillCarBox(pdf *fpdf.Fpdf, v models.Visit, CarBoxX float64, CarBoxY float64
 	y := CarBoxY + 5
 
 	pdf.SetXY(CarBoxX, y)
+	asset := v.VisitResponse.Asset
 
-	questionRow(pdf, "Aktiv Skadet?", optionalBoolToStr(v.VisitResponse.AssetDamaged), "")
-	questionRow(pdf, "Received keys", optionalBoolToStr(v.VisitResponse.KeysReceived), "")
-	questionRow(pdf, "Er den på adressen?", optionalBoolToStr(v.VisitResponse.AssetAtAddress), "")
-	questionRow(pdf, "Er den ren?", optionalBoolToStr(v.VisitResponse.AssetCleaned), "")
-	questionRow(pdf, "Bilen afleveret?", optionalBoolToStr(v.VisitResponse.AssetDelivered), "")
-	questionRow(pdf, "Salgsfuldmagt underskrevet", optionalBoolToStr(v.VisitResponse.SFSigned), "")
-	questionRow(pdf, "Skylderklæring underskrevet", optionalBoolToStr(v.VisitResponse.SESigned), "")
+	questionRow(pdf, "Aktiv Skadet?", asset.AssetStatus, "")
+	questionRow(pdf, "Received keys", optionalBoolToStr(asset.AssetKeysDelivered), "")
+	questionRow(pdf, "Er den på adressen?", optionalBoolToStr(asset.AssetSeen), "")
+	questionRow(pdf, "Er den ren?", asset.AssetCleanliness, "")
+	questionRow(pdf, "Bilen afleveret?", optionalBoolToStr(asset.IsSeized), "")
+	questionRow(pdf, "Salgsfuldmagt underskrevet", optionalBoolToStr(asset.SFSigned), "")
+
+	if asset.ContractType != "" {
+		questionRow(pdf, "Kontrakttype", asset.ContractType, "")
+	}
+	if asset.OdometerKm != nil {
+		questionRow(pdf, "Kilometertal", optionalUintToStr(asset.OdometerKm), "km")
+	}
+	if asset.HandoverStrategy != "" {
+		questionRow(pdf, "Overdragelse", asset.HandoverStrategy, "")
+	}
+	if asset.TransportProvider != "" {
+		questionRow(pdf, "Transportør", asset.TransportProvider, "")
+	}
+
+	//questionRow(pdf, "Skylderklæring underskrevet", optionalBoolToStr(v.VisitResponse.SESigned), "")
 
 }
 
 func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, FinanceBoxY float64, FinanceWidth float64) {
 	pdf.SetXY(FinanceBoxX, FinanceBoxY-6)
 	pdf.SetFont("Roboto", "B", pdfnormalFontSize+3)
-	pdf.CellFormat(FinanceWidth, 6, "Anden gæld", "", 0, "L", false, 0, "")
+	pdf.CellFormat(FinanceWidth, 6, "Finanser", "", 0, "L", false, 0, "")
 	pdf.SetFont("Roboto", "", pdfnormalFontSize-1)
 
 	paddingX := 4.0
@@ -351,14 +368,32 @@ func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, Finance
 
 	pdf.SetXY(FinanceBoxX, y)
 
-	// ask about
-	// v.VisitResponse.Creditor
-	// v.VisitResponse.DebtAmount
+	salary := moneyRangeStr(v.VisitResponse.Monetary.NetSalaryMin, v.VisitResponse.Monetary.NetSalaryMax)
+	income := moneyRangeStr(v.VisitResponse.Monetary.IncomePaymentMin, v.VisitResponse.Monetary.IncomePaymentMax)
+	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
 
-	questionRow(pdf, "anden gæld 1", v.VisitResponse.Creditor, optionalMoneyToStr(v.VisitResponse.DebtAmount))
-	questionRow(pdf, "anden gæld 2", v.VisitResponse.Creditor2, optionalMoneyToStr(v.VisitResponse.DebtAmount2))
-	questionRow(pdf, "anden gæld 3", v.VisitResponse.Creditor3, optionalMoneyToStr(v.VisitResponse.DebtAmount3))
+	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
+	questionRow(pdf, "overførsler", income, "pr. måned")
+	questionRow(pdf, "netto fra arbj.", salary, "pr. måned")
+	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "pr. måned")
 
+	amountStr := "-"
+	if p := v.VisitResponse.Monetary.DebtAmountPaid; p != nil {
+		amountStr = p.FormatDK()
+	}
+	questionRow(pdf, "bet. af anden gæld", amountStr, "pr. måned")
+
+	// betaling af restancen
+	payment := v.VisitResponse.Payment
+	paidText := optionalBoolToStr(payment.ReceivedPayment)
+	paidAmount := "-"
+	if payment.PaymentAmount != nil {
+		paidAmount = payment.PaymentAmount.FormatDK()
+	}
+	questionRow(pdf, "Betaling modtaget", paidText, paidAmount)
+	if payment.PaymentMethod != "" {
+		questionRow(pdf, "Betalingsmetode", payment.PaymentMethod, "")
+	}
 }
 
 func fillCommentsBox(pdf *fpdf.Fpdf, v models.Visit, CommentsBoxX float64, CommentsBoxY float64, CommentsWidth float64) {
@@ -403,9 +438,9 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 	//
 
 	// sizing
-	boxHeightCar := 50.0
-	boxHeightLife := 110.0
-	boxHeightFinance := 25.0
+	boxHeightCar := 65.0
+	boxHeightLife := 70.0
+	boxHeightFinance := 50.0
 	boxHeightComments := 50.0
 
 	boxWidth := 90.0
@@ -424,7 +459,13 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 	LifeX := CarX + boxWidth + 10.0
 
 	financeY := 10.0 + CarLifeY + boxHeightCar
-	CommentsY := 10.0 + CarLifeY + boxHeightLife // comments are below finance
+	// comments are below life box (not finance box), aligned under both columns
+
+	CommentsY := 10.0 + CarLifeY + boxHeightLife
+	if (10.0 + financeY + boxHeightFinance) > CommentsY {
+		// will go below the lowest
+		CommentsY = 10.0 + financeY + boxHeightFinance
+	}
 
 	financeX := HEADER_cornerX  // should be the same as the header
 	CommentsX := HEADER_cornerX // should be the same as the header

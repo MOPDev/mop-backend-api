@@ -293,7 +293,12 @@ func Visit_responses(c *gin.Context) {
 
 // POST /visit-response (form data only)
 func CreateVisitResponse(c *gin.Context) {
-	user, _ := getVerifyUser(c)
+	user, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "verification failed"})
+		return
+	}
+
 	var visitResponse models.VisitResponse
 	if err := c.ShouldBindJSON(&visitResponse); err != nil {
 		logger.Error(err.Error())
@@ -301,13 +306,44 @@ func CreateVisitResponse(c *gin.Context) {
 		return
 	}
 
-	if err := initializers.DB.Create(&visitResponse).Error; err != nil {
+	// ponytail: upsert on visit_id so a retry after failed image upload
+	// re-uses the existing response instead of erroring out
+	err := initializers.DB.
+		Where(models.VisitResponse{VisitID: visitResponse.VisitID}).
+		Assign(visitResponse).
+		FirstOrCreate(&visitResponse).Error
+	if err != nil {
 		logger.Error(err.Error())
 		c.JSON(500, gin.H{"error": "Failed to save visit response"})
 		return
 	}
 
-	internal.UpdateVisitStatus(visitResponse.VisitID, 4, user.ID)
+	// ponytail: retries re-post the full other_assets list; wipe old rows for
+	// this visit response first so we don't accumulate duplicates per retry
+	if err := initializers.DB.
+		Where("visit_response_id = ?", visitResponse.ID).
+		Delete(&models.Asset{}).Error; err != nil {
+		logger.Error(err.Error())
+		c.JSON(500, gin.H{"error": "Failed to reset other assets"})
+		return
+	}
+	if len(visitResponse.OtherAssets) > 0 {
+		for i := range visitResponse.OtherAssets {
+			visitResponse.OtherAssets[i].ID = 0
+			visitResponse.OtherAssets[i].VisitResponseID = visitResponse.ID
+		}
+		if err := initializers.DB.Create(&visitResponse.OtherAssets).Error; err != nil {
+			logger.Error(err.Error())
+			c.JSON(500, gin.H{"error": "Failed to save other assets"})
+			return
+		}
+	}
+
+	err = internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update status"})
+		return
+	}
 	c.JSON(200, visitResponse)
 }
 
@@ -376,6 +412,75 @@ func UploadVisitImage(c *gin.Context) {
 	initializers.DB.Save(&image)
 
 	c.JSON(http.StatusOK, image)
+}
+
+// POST /asset/:id/image
+func UploadAssetImage(c *gin.Context) {
+	assetIDdata := c.Param("id")
+	assetID, _ := strconv.ParseUint(assetIDdata, 10, 32)
+
+	var asset models.Asset
+	if err := initializers.DB.First(&asset, assetID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Asset not found"})
+		return
+	}
+
+	var visitResponse models.VisitResponse
+	if err := initializers.DB.First(&visitResponse, asset.VisitResponseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var visit models.Visit
+	if err := initializers.DB.First(&visit, visitResponse.VisitID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	extension := filepath.Ext(file.Filename)
+	newFileName := fmt.Sprintf("%d_%d_%d%s", visit.Sagsnr, asset.ID, time.Now().UnixNano(), extension)
+
+	uploadDir := "uploads/asset_images"
+	finalPath := filepath.Join(uploadDir, newFileName)
+
+	if err := c.SaveUploadedFile(file, finalPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+		return
+	}
+
+	asset.ImagePath = finalPath
+	asset.OriginalName = file.Filename
+	if err := initializers.DB.Save(&asset).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not update asset record"})
+		return
+	}
+
+	c.JSON(http.StatusOK, asset)
+}
+
+// POST /visit-response/:id/complete
+func CompleteVisitResponse(c *gin.Context) {
+	user, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "verification failed"})
+		return
+	}
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+
+	var vr models.VisitResponse
+	if err := initializers.DB.First(&vr, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "not found"})
+		return
+	}
+
+	internal.UpdateVisitStatus(vr.VisitID, 4, user.ID)
+	c.JSON(200, gin.H{"ok": true})
 }
 
 func AktivitersRapport(c *gin.Context) {
