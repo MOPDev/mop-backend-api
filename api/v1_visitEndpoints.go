@@ -339,7 +339,11 @@ func CreateVisitResponse(c *gin.Context) {
 		}
 	}
 
-	internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
+	err = internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update status"})
+		return
+	}
 	c.JSON(200, visitResponse)
 }
 

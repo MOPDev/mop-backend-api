@@ -97,6 +97,16 @@ func migrateTables() {
 		return
 	}
 
+	for _, s := range statuses {
+		result := initializers.DB.
+			Where(models.VisitStatus{Model: gorm.Model{ID: s.ID}}).
+			Assign(models.VisitStatus{Text: s.Text}).
+			FirstOrCreate(&s)
+		if result.Error != nil {
+			logger.Error(result.Error.Error())
+		}
+	}
+
 	logger.Info("Migration went well")
 }
 
