@@ -378,6 +378,56 @@ func UploadVisitImage(c *gin.Context) {
 	c.JSON(http.StatusOK, image)
 }
 
+// POST /asset/:id/image
+func UploadAssetImage(c *gin.Context) {
+	assetIDdata := c.Param("id")
+	assetID, _ := strconv.ParseUint(assetIDdata, 10, 32)
+
+	var asset models.Asset
+	if err := initializers.DB.First(&asset, assetID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Asset not found"})
+		return
+	}
+
+	var visitResponse models.VisitResponse
+	if err := initializers.DB.First(&visitResponse, asset.VisitResponseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var visit models.Visit
+	if err := initializers.DB.First(&visit, visitResponse.VisitID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	extension := filepath.Ext(file.Filename)
+	newFileName := fmt.Sprintf("%d_%d_%d%s", visit.Sagsnr, asset.ID, time.Now().UnixNano(), extension)
+
+	uploadDir := "uploads/asset_images"
+	finalPath := filepath.Join(uploadDir, newFileName)
+
+	if err := c.SaveUploadedFile(file, finalPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file: " + err.Error()})
+		return
+	}
+
+	asset.ImagePath = finalPath
+	asset.OriginalName = file.Filename
+	if err := initializers.DB.Save(&asset).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not update asset record"})
+		return
+	}
+
+	c.JSON(http.StatusOK, asset)
+}
+
 func AktivitersRapport(c *gin.Context) {
 	visitIDdata := c.Query("VisitId")
 	visitID, _ := strconv.ParseUint(visitIDdata, 10, 64)

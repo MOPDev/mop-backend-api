@@ -145,7 +145,7 @@ func propertyIssuesStr(p models.PropertyQuestions) string {
 		active = append(active, "Til salg-skilt")
 	}
 	if len(active) == 0 {
-		return "Ingen bemærkninger"
+		return "Ingen bemærk."
 	}
 	return strings.Join(active, ", ")
 }
@@ -258,7 +258,15 @@ func pdfHeader(pdf *fpdf.Fpdf, v models.Visit) {
 		pdf.SetX(20)                           // Further indent for details
 		pdf.SetFontSize(pdfnormalFontSize - 1) // Optional: slightly smaller text for details
 
-		contactLine := fmt.Sprintf("tlf: %s  |  mail: %s  |  debitorId: %s", phone, deb.Email, AdvoproDebitor)
+		// if the values have been checked by the auditor then we mark and use those instead
+		if v.VisitResponse.Contact.CorrectedTlf != "" {
+			phone = v.VisitResponse.Contact.CorrectedTlf + "*"
+		}
+		email := deb.Email
+		if v.VisitResponse.Contact.CorrectedMail != "" {
+			email = v.VisitResponse.Contact.CorrectedMail + "*"
+		}
+		contactLine := fmt.Sprintf("tlf: %s  |  mail: %s  |  debitorId: %s", phone, email, AdvoproDebitor)
 		pdf.CellFormat(0, 5, contactLine, "", 1, "L", false, 0, "")
 
 		pdf.Ln(1) // Small space between different debitors
@@ -271,8 +279,8 @@ func pdfHeader(pdf *fpdf.Fpdf, v models.Visit) {
 	pdf.SetXY(box_cornerX, box_cornerY+box_heigt-7)
 	pdf.CellFormat(20, 6, "Konsulent:", "", 0, "", false, 0, "")
 	pdf.CellFormat(40, 6, v.User.Name, "", 0, "", false, 0, "")
-	pdf.CellFormat(10, 6, "tlf:", "", 0, "", false, 0, "")
-	pdf.CellFormat(40, 6, v.User.Phone, "", 0, "", false, 0, "")
+	//pdf.CellFormat(10, 6, "tlf:", "", 0, "", false, 0, "")
+	//pdf.CellFormat(40, 6, v.User.Phone, "", 0, "", false, 0, "")
 	//pdf.CellFormat(25, 6, "tidsforbrug:", "", 0, "", false, 0, "")
 	//pdf.CellFormat(0, 6, duration.String(), "", 1, "R", false, 0, "")
 
@@ -300,19 +308,6 @@ func fillLifeBox(pdf *fpdf.Fpdf, v models.Visit, LifeBoxX float64, LifeBoxY floa
 
 	questionRow(pdf, "Civilstatus", civilStatusToString(v.VisitResponse.Monetary.CivilStatus), "")
 	questionRow(pdf, "Børn u/18 hjemme", optionalUintToStr(v.VisitResponse.Monetary.ChildrenUnder18), "")
-
-	salary := moneyRangeStr(v.VisitResponse.Monetary.NetSalaryMin, v.VisitResponse.Monetary.NetSalaryMax)
-	income := moneyRangeStr(v.VisitResponse.Monetary.IncomePaymentMin, v.VisitResponse.Monetary.IncomePaymentMax)
-	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
-
-	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
-	questionRow(pdf, "Arbejde inkosmt", "", salary)
-	questionRow(pdf, "Off. ydelser", "", income)
-
-	totalStr := "-" // total of offentlige ydelser and inkomst
-
-	questionRow(pdf, "Total udbetalt", "", totalStr)
-	questionRow(pdf, "Rådighedsbeløb", "", monthlydisposable)
 
 	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.Property.PropertyType), "")
 	questionRow(pdf, "Ejendomsbemærk.", "", propertyIssuesStr(v.VisitResponse.Property))
@@ -373,41 +368,20 @@ func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, Finance
 
 	pdf.SetXY(FinanceBoxX, y)
 
-	text := ""
-	amountStr := ""
+	salary := moneyRangeStr(v.VisitResponse.Monetary.NetSalaryMin, v.VisitResponse.Monetary.NetSalaryMax)
+	income := moneyRangeStr(v.VisitResponse.Monetary.IncomePaymentMin, v.VisitResponse.Monetary.IncomePaymentMax)
+	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
 
-	incomeMax := v.VisitResponse.Monetary.IncomePaymentMax
-	incomeMin := v.VisitResponse.Monetary.IncomePaymentMin
-	if incomeMin != nil && incomeMax != nil {
-		amountStr = incomeMin.FormatDK() + " - " + incomeMax.FormatDK()
-	}
-	questionRow(pdf, "overførsler", amountStr, "")
+	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
+	questionRow(pdf, "overførsler", income, "pr. måned")
+	questionRow(pdf, "netto fra arbj.", salary, "pr. måned")
+	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "pr. måned")
 
-	amountStr = ""
-	salMax := v.VisitResponse.Monetary.NetSalaryMax
-	salMin := v.VisitResponse.Monetary.NetSalaryMin
-	if salMax != nil && salMin != nil {
-		amountStr = salMin.FormatDK() + " - " + salMax.FormatDK()
-	}
-	questionRow(pdf, "netto inkomst", amountStr, "")
-
-	amountStr = ""
-	mMax := v.VisitResponse.Monetary.MonthlyDisposableMax
-	mMin := v.VisitResponse.Monetary.MonthlyDisposableMin
-	if mMax != nil && mMin != nil {
-		amountStr = mMin.FormatDK() + " - " + mMax.FormatDK()
-	}
-	questionRow(pdf, "Rådigheds beløb", amountStr, "")
-
-	text = ""
-	amountStr = "0,00 kr."
+	amountStr := "-"
 	if p := v.VisitResponse.Monetary.DebtAmountPaid; p != nil {
-		if float64(*p)/100.0 > 0 {
-			text = "Penge som bliver brugt på anden gæld"
-		}
 		amountStr = p.FormatDK()
 	}
-	questionRow(pdf, "anden gæld", text, amountStr)
+	questionRow(pdf, "bet. af anden gæld", amountStr, "pr. måned")
 
 	// betaling af restancen
 	payment := v.VisitResponse.Payment
@@ -464,9 +438,9 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 	//
 
 	// sizing
-	boxHeightCar := 75.0
-	boxHeightLife := 140.0
-	boxHeightFinance := 45.0
+	boxHeightCar := 65.0
+	boxHeightLife := 70.0
+	boxHeightFinance := 50.0
 	boxHeightComments := 50.0
 
 	boxWidth := 90.0
@@ -486,7 +460,12 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 
 	financeY := 10.0 + CarLifeY + boxHeightCar
 	// comments are below life box (not finance box), aligned under both columns
+
 	CommentsY := 10.0 + CarLifeY + boxHeightLife
+	if (10.0 + financeY + boxHeightFinance) > CommentsY {
+		// will go below the lowest
+		CommentsY = 10.0 + financeY + boxHeightFinance
+	}
 
 	financeX := HEADER_cornerX  // should be the same as the header
 	CommentsX := HEADER_cornerX // should be the same as the header

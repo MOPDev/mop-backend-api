@@ -76,6 +76,8 @@ func start_server() {
 		apiv1.POST("/visit-response/create", middleware.RequireAuthUser, api.CreateVisitResponse) // make a response
 		apiv1.POST("/visit-response/:id/images", middleware.RequireAuthUser, api.UploadVisitImage)
 
+		apiv1.POST("asset/:id/image", middleware.RequireAuthUser, api.UploadAssetImage)
+
 		apiv1.GET("/visits", middleware.RequireAuthUser, api.GetVisits)
 		apiv1.GET("/visits/types", api.GetVisitTypes)
 		apiv1.GET("/visits/byId", middleware.RequireAuthUser, api.GetVisitsById)                 //query parameter
