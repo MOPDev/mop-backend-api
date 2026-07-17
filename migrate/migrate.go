@@ -181,6 +181,11 @@ func fullreset() {
 			FirstOrCreate(&s)
 	}
 
+	// init some visit types
+	for _, s := range visitTypes {
+		initializers.DB.FirstOrCreate(&s)
+	}
+
 	//Hash the password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
 	hashedPassword1, _ := bcrypt.GenerateFromPassword([]byte(user1.Password), 14)
@@ -193,10 +198,9 @@ func fullreset() {
 	initializers.DB.Create(&user1) // Save the user to the database
 
 	// init some visit types
-	initializers.DB.Create(&type1)
-	initializers.DB.Create(&type2)
-	initializers.DB.Create(&type3)
-	initializers.DB.Create(&type4)
+	for _, s := range visitTypes {
+		initializers.DB.Create(&s)
+	}
 
 	//create debitors
 	initializers.DB.Create(&db1)
@@ -205,11 +209,11 @@ func fullreset() {
 
 	// create some visits to the debitors
 	visit1.UserID = user.ID
-	visit1.TypeID = type1.ID
+	visit1.TypeID = visitTypes[0].ID
 	visit1.Debitors = []models.Debitor{db1, db3}
 
 	visit2.UserID = user.ID
-	visit2.TypeID = type2.ID
+	visit2.TypeID = visitTypes[1].ID
 	visit2.Debitors = []models.Debitor{db2, db3}
 
 	initializers.DB.Create(&visit1) // Save the visit to the database
@@ -225,16 +229,16 @@ func fullreset() {
 
 	//create some visits to the debitors
 	visit3.UserID = user.ID
-	visit3.TypeID = type3.ID // type3.ID
+	visit3.TypeID = visitTypes[2].ID // type3.ID
 
 	visit4.UserID = user.ID
-	visit4.TypeID = type4.ID //4
+	visit4.TypeID = visitTypes[3].ID //4
 
 	visit5.UserID = user.ID
-	visit5.TypeID = type1.ID
+	visit5.TypeID = visitTypes[0].ID
 
 	visit6.UserID = user.ID
-	visit6.TypeID = type2.ID // 2
+	visit6.TypeID = visitTypes[1].ID // 2
 
 	// add debitors to the visits
 	visit3.Debitors = []models.Debitor{db1}
@@ -266,29 +270,28 @@ var statuses = []models.VisitStatus{
 	{Model: gorm.Model{ID: 6}, Text: "pending completion"},
 }
 
-var type1 = models.VisitType{
-	Text: "købekontrakt",
-	Description: `En købekontrakt betyder at bilen ejes af debitor.
-	Debitor skylder dog penge som han har brugt på bilen.
-	Det er derfor vigtigt at vide hvordan bilen har det og om han har solgt eller andet`,
-}
-
-var type2 = models.VisitType{
-	Text: "leasing",
-	Description: `En Leasing aftale betyder at bilen ikke ejes af debitor.
-	Det betyder at man godt bare må tage bilen.
-	Det er derfor vigtigt at vide hvordan bilen har det, og evt. hvor den er nu`,
-}
-
-var type3 = models.VisitType{
-	Text: "blanco",
-	Description: `En blanco aftale betyder at man bare skal have penge ud af debitor.
-	Det betyder at det er vigtigt at finde ud af hvor rig personen er, og hvor godt de kan betale en gæld tilbage`,
-}
-
-var type4 = models.VisitType{
-	Text:        "brev",
-	Description: `Dette betyder at vi bare gerne vil aflevere et brev, evt. tage et billede af postkassen eller mangel derpå`,
+var visitTypes = []models.VisitType{
+	{
+		Text: "købekontrakt",
+		Description: `En købekontrakt betyder at bilen ejes af debitor.
+    Debitor skylder dog penge som han har brugt på bilen.
+    Det er derfor vigtigt at vide hvordan bilen har det og om han har solgt eller andet`,
+	},
+	{
+		Text: "leasing",
+		Description: `En Leasing aftale betyder at bilen ikke ejes af debitor.
+    Det betyder at man godt bare må tage bilen.
+    Det er derfor vigtigt at vide hvordan bilen har det, og evt. hvor den er nu`,
+	},
+	{
+		Text: "blanco",
+		Description: `En blanco aftale betyder at man bare skal have penge ud af debitor.
+    Det betyder at det er vigtigt at finde ud af hvor rig personen er, og hvor godt de kan betale en gæld tilbage`,
+	},
+	{
+		Text:        "brev",
+		Description: `Dette betyder at vi bare gerne vil aflevere et brev, evt. tage et billede af postkassen eller mangel derpå`,
+	},
 }
 
 var root = models.User{
