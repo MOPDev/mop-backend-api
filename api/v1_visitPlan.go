@@ -14,12 +14,13 @@ import (
 	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func visitIntervalRange(arrivalTime string) string {
+func visitIntervalRange(arrivalTime string) (string, bool) {
 	t, err := time.Parse("15:04", arrivalTime)
 	if err != nil {
-		return ""
+		return "", false
 	}
 
 	// Round to nearest hour
@@ -45,7 +46,17 @@ func visitIntervalRange(arrivalTime string) string {
 		end = maxEnd
 	}
 
-	return fmt.Sprintf("%s - %s", start.Format("15:04"), end.Format("15:04"))
+	return fmt.Sprintf("%s - %s", start.Format("15:04"), end.Format("15:04")), true
+}
+
+// preparedRow holds one already-validated row, ready to write.
+type preparedRow struct {
+	rowNum        int // for error messages, 1-based excel row (i+2)
+	visitID       uint
+	sagsnr        uint
+	stopnr        uint
+	advoproStatus uint
+	visit         models.Visit
 }
 
 func PlanVisit(c *gin.Context) {
@@ -74,6 +85,12 @@ func PlanVisit(c *gin.Context) {
 		return
 	}
 
+	userIDUint, err := strconv.ParseUint(userID, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid userId"})
+		return
+	}
+
 	src, err := file.Open()
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to open file"})
@@ -94,25 +111,23 @@ func PlanVisit(c *gin.Context) {
 		return
 	}
 
-	// to find the next group id
-	var visit models.Visit
-	var nextGroupId uint
-	result := initializers.DB.Where("group_id IS NOT NULL").Order("group_id DESC").First(&visit)
-	if result.Error != nil {
-		nextGroupId = uint(1)
-	} else {
-		if visit.GroupId == nil {
-			nextGroupId = 1
-		} else {
-			nextGroupId = *visit.GroupId + 1
-		}
+	// one group id per upload (aesthetic grouping: "this route belongs together")
+	var lastVisit models.Visit
+	var nextGroupId uint = 1
+	if result := initializers.DB.Where("group_id IS NOT NULL").Order("group_id DESC").First(&lastVisit); result.Error == nil && lastVisit.GroupId != nil {
+		nextGroupId = *lastVisit.GroupId + 1
 	}
 
 	headers := rows[0]
-	userIDUint, _ := strconv.ParseUint(userID, 10, 64)
+
+	// --- Pass 1: validate every row before writing anything. ---
+	// Any bad row rejects the whole file, so the user gets one clear report
+	// instead of a partially-applied upload.
+	var prepared []preparedRow
+	var rowErrors []string
 
 	for i, row := range rows[1:] {
-		// Create map for easy access by column name
+		rowNum := i + 2
 		rowData := make(map[string]string)
 		for j, header := range headers {
 			if j < len(row) {
@@ -122,61 +137,93 @@ func PlanVisit(c *gin.Context) {
 			}
 		}
 
-		// 1. Parse IDs (Crucial for finding the record)
-		// Based on your notes: [16] is Comment 6 / besoegsId
-		visitIDUint, _ := strconv.ParseUint(rowData["Comment 6"], 10, 64) // besoegsId
-		// Based on your notes: [2] is Title / sagsnr
-		sagsnrUint, _ := strconv.ParseUint(rowData["Title"], 10, 64) // sagsnr
-		// Based on your notes: [1] is Stop
-		stopNrUint, _ := strconv.ParseUint(rowData["Stop"], 10, 64)
+		visitIDUint, err1 := strconv.ParseUint(rowData["Comment 6"], 10, 64) // besoegsId
+		sagsnrUint, err2 := strconv.ParseUint(rowData["Title"], 10, 64)      // sagsnr
+		stopNrUint, err3 := strconv.ParseUint(rowData["Stop"], 10, 64)
+		advoproStatusUint, err4 := strconv.ParseUint(rowData["Comment 2"], 10, 64) // statuskode
 
-		// 2. Parse Advopro Status (Comment 2)
-		advoproStatusUint, _ := strconv.ParseUint(rowData["Comment 2"], 10, 64) // , statuskode
-
-		if visitIDUint == 0 {
-			logger.Errorf("Row %d: Missing Visit ID, skipping", i+2)
+		switch {
+		case err1 != nil || visitIDUint == 0:
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: missing/invalid Visit ID (Comment 6)", rowNum))
+			continue
+		case err2 != nil:
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: invalid Sagsnr (Title)", rowNum))
+			continue
+		case err3 != nil:
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: invalid Stop", rowNum))
+			continue
+		case err4 != nil:
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: invalid Advopro status (Comment 2)", rowNum))
 			continue
 		}
 
-		// 3. Prepare Update Object
-		updatedVisit := models.Visit{
-			Latitude:      rowData["Lattitude"],  // Keep typo if it matches Excel header
-			Longitude:     rowData["longtitude"], // Keep typo if it matches Excel header
-			VisitTime:     rowData["Arrival Time"],
-			VisitInterval: visitIntervalRange(rowData["Arrival Time"]),
-			VisitDate:     parsedDate,
-			Stopnr:        uint(stopNrUint),
-			Address:       rowData["Address"],
-			UserID:        uint(userIDUint),
-			Sagsnr:        uint(sagsnrUint),
-			// New Advopro fields
-			AdvoproStatus:       uint(advoproStatusUint),
-			AdvoproStatusText:   rowData["Comment 3"], // , statustekst
-			AdvoproDeadlineDate: rowData["Comment 4"], // , fristDato
-			AdvoproKlient:       rowData["Comment 5"], // , Klientnavn
-			// new group id
-			GroupId: &nextGroupId,
-		}
-
-		// 4. Database logic
-		query := initializers.DB.Model(&models.Visit{}).Where("id = ? AND sagsnr = ?", visitIDUint, sagsnrUint)
-
-		// If not developer, only allow updating visits that are still in 'New' status (status_id = 1)
-		if user.Rights != models.RightsDeveloper { // this restricts the normal user to only the normal flow. but dev can move any case to status 2
-			query = query.Where("status_id = 1")
-		}
-
-		result := query.Updates(updatedVisit)
-
-		if result.Error != nil {
-			logger.Errorf("Database error row %d: %v", i+2, result.Error)
+		visitInterval, ok := visitIntervalRange(rowData["Arrival Time"])
+		if !ok {
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: invalid Arrival Time %q", rowNum, rowData["Arrival Time"]))
 			continue
 		}
 
-		if result.RowsAffected > 0 {
-			// Update the internal status to 2 (Planned/Assigned)
-			internal.UpdateVisitStatus(uint(visitIDUint), 2, user.ID)
+		// sagsnr is never updated by this action - the file must reference
+		// the same visit/sagsnr pair that's already in the DB, or reject.
+		var existing models.Visit
+		if err := initializers.DB.Select("id", "sagsnr").First(&existing, visitIDUint).Error; err != nil {
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: visit id %d not found", rowNum, visitIDUint))
+			continue
 		}
+		if existing.Sagsnr != uint(sagsnrUint) {
+			rowErrors = append(rowErrors, fmt.Sprintf("row %d: sagsnr mismatch for visit %d (file has %d, db has %d)", rowNum, visitIDUint, sagsnrUint, existing.Sagsnr))
+			continue
+		}
+
+		prepared = append(prepared, preparedRow{
+			rowNum:        rowNum,
+			visitID:       uint(visitIDUint),
+			sagsnr:        uint(sagsnrUint),
+			stopnr:        uint(stopNrUint),
+			advoproStatus: uint(advoproStatusUint),
+			visit: models.Visit{
+				Latitude:            rowData["Lattitude"],  // Keep typo if it matches Excel header
+				Longitude:           rowData["longtitude"], // Keep typo if it matches Excel header
+				VisitTime:           rowData["Arrival Time"],
+				VisitInterval:       visitInterval,
+				VisitDate:           parsedDate,
+				Stopnr:              uint(stopNrUint),
+				Address:             rowData["Address"],
+				UserID:              uint(userIDUint),
+				Sagsnr:              uint(sagsnrUint),
+				AdvoproStatus:       uint(advoproStatusUint),
+				AdvoproStatusText:   rowData["Comment 3"],
+				AdvoproDeadlineDate: rowData["Comment 4"],
+				AdvoproKlient:       rowData["Comment 5"],
+				GroupId:             &nextGroupId,
+			},
+		})
+	}
+
+	if len(rowErrors) > 0 {
+		c.JSON(400, gin.H{"error": "File rejected, fix the following rows and re-upload", "rows": rowErrors})
+		return
+	}
+
+	// --- Pass 2: everything validated, write it all in one transaction. ---
+	err = initializers.DB.Transaction(func(tx *gorm.DB) error {
+		for _, p := range prepared {
+			result := tx.Model(&models.Visit{}).
+				Where("id = ? AND sagsnr = ?", p.visitID, p.sagsnr).
+				Updates(p.visit)
+			if result.Error != nil {
+				return fmt.Errorf("row %d: %w", p.rowNum, result.Error)
+			}
+			if result.RowsAffected > 0 {
+				internal.UpdateVisitStatus(p.visitID, 2, user.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Errorf("Upload failed, rolled back: %v", err)
+		c.JSON(500, gin.H{"error": "Failed to apply visits, no changes were made", "detail": err.Error()})
+		return
 	}
 
 	c.JSON(200, gin.H{"message": "Visits processed successfully"})
