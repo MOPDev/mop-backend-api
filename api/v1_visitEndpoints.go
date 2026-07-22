@@ -243,6 +243,7 @@ func Visit_responses(c *gin.Context) {
 	user, ok := getVerifyUser(c)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{})
+		return
 	}
 
 	var users []models.User
