@@ -90,6 +90,20 @@ func ChangeGroupId(c *gin.Context) {
 			} else {
 				return err
 			}
+		} else {
+			// if the value is nil then we should give it a new value
+			// lets try to find the highest value groupID and increment
+			var visit models.Visit
+			var NewGroupId *uint
+			tx.Order("group_id DESC").First(&visit)
+			if visit.GroupId != nil {
+				newId := *visit.GroupId + 1
+				NewGroupId = &newId
+			} else {
+				defaultId := uint(1)
+				NewGroupId = &defaultId // default value if nil
+			}
+			input.TargetGroupId = NewGroupId
 		}
 
 		// 1. LOG changes (before updating the record)

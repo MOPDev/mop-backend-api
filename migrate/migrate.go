@@ -147,16 +147,16 @@ func zodMigrate() {
 	// Local structs without gorm.Model — use *gorm.DeletedAt so zen
 	// generates DeletedAtSchema.nullable() (backend sends null when not deleted).
 	type UserWithoutVisits struct {
-		ID        uint             `json:"ID"`
-		CreatedAt time.Time        `json:"CreatedAt"`
-		UpdatedAt time.Time        `json:"UpdatedAt"`
-		DeletedAt *gorm.DeletedAt  `json:"DeletedAt"`
-		Initials  string           `json:"initials"`
-		Name      string           `json:"name"`
-		Username  string           `json:"username"`
+		ID        uint              `json:"ID"`
+		CreatedAt time.Time         `json:"CreatedAt"`
+		UpdatedAt time.Time         `json:"UpdatedAt"`
+		DeletedAt *gorm.DeletedAt   `json:"DeletedAt"`
+		Initials  string            `json:"initials"`
+		Name      string            `json:"name"`
+		Username  string            `json:"username"`
 		Rights    models.UserRights `json:"rights"`
-		Email     string           `json:"email"`
-		Phone     string           `json:"phone"`
+		Email     string            `json:"email"`
+		Phone     string            `json:"phone"`
 		// NO Visits, NO Password
 	}
 
@@ -167,28 +167,28 @@ func zodMigrate() {
 		DeletedAt *gorm.DeletedAt `json:"DeletedAt"`
 		UserID    uint            `json:"user_id"`
 		// NO User field - just keep UserID
-		Address            string             `json:"address"`
-		Latitude           string             `json:"latitude"`
-		Longitude          string             `json:"longitude"`
-		Notes              string             `json:"notes"`
-		Sagsnr             uint               `json:"sagsnr"`
-		Stopnr             uint               `json:"stop_nr"`
-		VisitDate          time.Time          `json:"visit_date"`
-		VisitTime          string             `json:"visit_time"`
-		VisitInterval      string             `json:"visit_interval"`
-		Visited            bool               `json:"visited"`
-		StatusID           uint               `json:"status_id"`
-		Status             models.VisitStatus `json:"status"`
-		VisitResponse      *models.VisitResponse   `json:"visit_response"`
-		VisitStatusLogs    []models.VisitStatusLog `json:"visit_status_logs"`
-		TypeID             uint                    `json:"type_id"`
-		Type               models.VisitType        `json:"type"`
-		AdvoproStatus      uint                    `json:"advopro__status"`
-		AdvoproStatusText  string                  `json:"advopro_status_text"`
-		AdvoproDeadlineDate string                 `json:"advopro_deadline_date"`
-		AdvoproKlient      string                  `json:"advopro_klient"`
-		GroupId            *uint                   `json:"group_id"`
-		Cancelled          *bool                   `json:"cancelled"`
+		Address             string                  `json:"address"`
+		Latitude            string                  `json:"latitude"`
+		Longitude           string                  `json:"longitude"`
+		Notes               string                  `json:"notes"`
+		Sagsnr              uint                    `json:"sagsnr"`
+		Stopnr              uint                    `json:"stop_nr"`
+		VisitDate           time.Time               `json:"visit_date"`
+		VisitTime           string                  `json:"visit_time"`
+		VisitInterval       string                  `json:"visit_interval"`
+		Visited             bool                    `json:"visited"`
+		StatusID            uint                    `json:"status_id"`
+		Status              models.VisitStatus      `json:"status"`
+		VisitResponse       *models.VisitResponse   `json:"visit_response"`
+		VisitStatusLogs     []models.VisitStatusLog `json:"visit_status_logs"`
+		TypeID              uint                    `json:"type_id"`
+		Type                models.VisitType        `json:"type"`
+		AdvoproStatus       uint                    `json:"advopro__status"`
+		AdvoproStatusText   string                  `json:"advopro_status_text"`
+		AdvoproDeadlineDate string                  `json:"advopro_deadline_date"`
+		AdvoproKlient       string                  `json:"advopro_klient"`
+		GroupId             *uint                   `json:"group_id"`
+		Cancelled           *bool                   `json:"cancelled"`
 		// NO Debitors
 	}
 
