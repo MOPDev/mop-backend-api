@@ -30,7 +30,7 @@ func usage() {
 
 examples:
   %s resetpassword 123
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 // go run .\migrate\migrate.go automigrate
