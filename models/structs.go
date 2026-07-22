@@ -171,6 +171,8 @@ type Visit struct {
 	AdvoproKlient       string `json:"advopro_klient"`
 	// a new type of ID for grouping
 	GroupId *uint `json:"group_id"`
+
+	Cancelled *bool `json:"cancelled"` // for use in the soft delete for the UI
 }
 
 type VisitResponse struct {
