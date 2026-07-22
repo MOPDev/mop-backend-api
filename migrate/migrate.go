@@ -11,6 +11,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
+	"github.com/hypersequent/zen"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,7 @@ func usage() {
   %s automigrate
   %s resetpassword <id>
   %s fullreset
+  %s zod
 
 examples:
   %s resetpassword 123
@@ -68,6 +70,9 @@ func main() {
 
 	case "fullreset":
 		fullreset()
+
+	case "zod":
+		zodMigrate()
 
 	default:
 		log.Printf("unknown command: %s", os.Args[1])
@@ -136,6 +141,82 @@ func resetPassword(id uint) {
 
 	initializers.DB.Model(&user).Update("password", string(hashedPassword))
 	logger.Info("the new password is 'pass'")
+}
+
+func zodMigrate() {
+	// Local structs without gorm.Model — use *gorm.DeletedAt so zen
+	// generates DeletedAtSchema.nullable() (backend sends null when not deleted).
+	type UserWithoutVisits struct {
+		ID        uint             `json:"ID"`
+		CreatedAt time.Time        `json:"CreatedAt"`
+		UpdatedAt time.Time        `json:"UpdatedAt"`
+		DeletedAt *gorm.DeletedAt  `json:"DeletedAt"`
+		Initials  string           `json:"initials"`
+		Name      string           `json:"name"`
+		Username  string           `json:"username"`
+		Rights    models.UserRights `json:"rights"`
+		Email     string           `json:"email"`
+		Phone     string           `json:"phone"`
+		// NO Visits, NO Password
+	}
+
+	type VisitWithoutUserOrDebitors struct {
+		ID        uint            `json:"ID"`
+		CreatedAt time.Time       `json:"CreatedAt"`
+		UpdatedAt time.Time       `json:"UpdatedAt"`
+		DeletedAt *gorm.DeletedAt `json:"DeletedAt"`
+		UserID    uint            `json:"user_id"`
+		// NO User field - just keep UserID
+		Address            string             `json:"address"`
+		Latitude           string             `json:"latitude"`
+		Longitude          string             `json:"longitude"`
+		Notes              string             `json:"notes"`
+		Sagsnr             uint               `json:"sagsnr"`
+		Stopnr             uint               `json:"stop_nr"`
+		VisitDate          time.Time          `json:"visit_date"`
+		VisitTime          string             `json:"visit_time"`
+		VisitInterval      string             `json:"visit_interval"`
+		Visited            bool               `json:"visited"`
+		StatusID           uint               `json:"status_id"`
+		Status             models.VisitStatus `json:"status"`
+		VisitResponse      *models.VisitResponse   `json:"visit_response"`
+		VisitStatusLogs    []models.VisitStatusLog `json:"visit_status_logs"`
+		TypeID             uint                    `json:"type_id"`
+		Type               models.VisitType        `json:"type"`
+		AdvoproStatus      uint                    `json:"advopro__status"`
+		AdvoproStatusText  string                  `json:"advopro_status_text"`
+		AdvoproDeadlineDate string                 `json:"advopro_deadline_date"`
+		AdvoproKlient      string                  `json:"advopro_klient"`
+		GroupId            *uint                   `json:"group_id"`
+		Cancelled          *bool                   `json:"cancelled"`
+		// NO Debitors
+	}
+
+	type DebitorWithoutVisits struct {
+		ID               uint            `json:"ID"`
+		CreatedAt        time.Time       `json:"CreatedAt"`
+		UpdatedAt        time.Time       `json:"UpdatedAt"`
+		DeletedAt        *gorm.DeletedAt `json:"DeletedAt"`
+		Name             string          `json:"name"`
+		Phone            string          `json:"phone"`
+		PhoneWork        string          `json:"phone_work"`
+		Email            string          `json:"email"`
+		Gender           models.Gender   `json:"gender"`
+		Birthday         time.Time       `json:"birthday"`
+		AdvoproDebitorId int             `json:"Advopro_debitor_id"`
+		Risk             models.Risk     `json:"risk"`
+		SSN              string          `json:"ssn"`
+		Iscompany        bool            `json:"is_company"`
+		Notes            string          `json:"notes"`
+		// NO Visits
+	}
+
+	for _, s := range []any{UserWithoutVisits{}, VisitWithoutUserOrDebitors{}, DebitorWithoutVisits{}} {
+		out := zen.StructToZodSchema(s)
+		// Backend sends null for gorm.DeletedAt when not soft-deleted
+		out = strings.ReplaceAll(out, "DeletedAt: DeletedAtSchema,", "DeletedAt: DeletedAtSchema.nullable(),")
+		fmt.Println(out)
+	}
 }
 
 func fullreset() {

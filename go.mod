@@ -1,6 +1,6 @@
 module github.com/MOPDev/mop-backend-api
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/360EntSecGroup-Skylar/excelize v1.4.1
@@ -8,6 +8,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
+	github.com/hypersequent/zen v0.0.0-20260625113527-787205d4ec88
 	github.com/joho/godotenv v1.5.1
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/pdfcpu/pdfcpu v0.13.0
@@ -43,6 +44,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
