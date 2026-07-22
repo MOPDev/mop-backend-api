@@ -280,7 +280,6 @@ func PlannedVisitsExcel(c *gin.Context) {
 }
 
 func PatchVisit(c *gin.Context) {
-	var visit models.Visit
 	visitIDStr := c.Param("id")
 
 	visitID, err := strconv.ParseUint(visitIDStr, 10, 64)
@@ -289,7 +288,8 @@ func PatchVisit(c *gin.Context) {
 		return
 	}
 
-	if err := c.ShouldBindJSON(&visit); err != nil {
+	var updates map[string]interface{}
+	if err := c.ShouldBindJSON(&updates); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
 		return
 	}
@@ -300,11 +300,12 @@ func PatchVisit(c *gin.Context) {
 		return
 	}
 
-	// Only update non-zero value fields
-	if err := initializers.DB.Model(&existingVisit).Updates(visit).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update visit"})
+	if err := initializers.DB.Model(&existingVisit).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	initializers.DB.Preload("User").Preload("Status").Preload("Debitors").Preload("Type").Preload("VisitResponse").First(&existingVisit, visitID)
 
 	c.JSON(http.StatusOK, existingVisit)
 }
