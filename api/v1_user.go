@@ -294,8 +294,8 @@ func Patch(c *gin.Context) {
 		"Username": userPatch.Username,
 	}
 
-	// 3. Cleaner way to add Developer-only fields to the update map
-	if actingUser.Rights == models.RightsDeveloper {
+	// 3. Only allow rights change when explicitly provided (avoid wiping via empty string)
+	if actingUser.Rights == models.RightsDeveloper && userPatch.Rights != "" {
 		updates["Rights"] = userPatch.Rights
 	}
 

@@ -273,6 +273,7 @@ func Visit_responses(c *gin.Context) {
 			Preload("Visits.VisitResponse").
 			Preload("Visits.Status").Find(&users)
 	default:
+		logger.Warnf("user %s with following rights tried visitresponses: %s", string(user.Name), string(user.Rights))
 		c.JSON(http.StatusMethodNotAllowed, gin.H{
 			"status": "Failure",
 			"users":  nil,
