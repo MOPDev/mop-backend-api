@@ -509,7 +509,7 @@ func AddNoteToAdvopro(visit models.Visit) bool {
 
 	// then we write to advopro database
 	// --- Insert (dry run) ---
-	newID, err := InsertHistorik(InsertHistorikParams{
+	_, err := InsertHistorik(InsertHistorikParams{
 		Sagsnr:        int(visit.Sagsnr),
 		Tekst:         "Besøgs notat",
 		Noter:         note,
