@@ -520,7 +520,7 @@ func AddNoteToAdvopro(visit models.Visit) bool {
 	if err != nil {
 		log.Fatalf("Insert failed: %v", err)
 	}
-	logger.Infof("Would have inserted HistorikId: %d", newID)
+	//logger.Infof("Would have inserted HistorikId: %d", newID)
 
 	return true
 }
