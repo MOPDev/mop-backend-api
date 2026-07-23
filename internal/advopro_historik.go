@@ -222,21 +222,24 @@ func InsertHistorik(p InsertHistorikParams) (int, error) {
             '', 0, 0, 0, 0, 0
         )`
 
-	dryRunPrefix := ""
-	if p.DryRun {
-		dryRunPrefix = "[DRY RUN] "
-	}
-	log.Printf("%sInserting historik for Sagsnr %d", dryRunPrefix, p.Sagsnr)
-	log.Printf("%sTekst: %s", dryRunPrefix, p.Tekst)
-
+	/*
+		dryRunPrefix := ""
+		if p.DryRun {
+			dryRunPrefix = "[DRY RUN] "
+		}
+		logger.Infof("%sInserting historik for Sagsnr %d", dryRunPrefix, p.Sagsnr)
+		logger.Infof("%sTekst: %s", dryRunPrefix, p.Tekst)
+	*/
 	db, err := openDB(Server, AdvoPro)
 	if err != nil {
+		logger.Errorf("Cant open connection to DB %s", err.Error())
 		return 0, err
 	}
 	defer db.Close()
 
 	tx, err := db.Begin()
 	if err != nil {
+		logger.Errorf("failed to begin transaction %s", err.Error())
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -259,11 +262,12 @@ func InsertHistorik(p InsertHistorikParams) (int, error) {
 		sql.Named("oprettetAf", p.OprettetAf),
 	).Scan(&newID)
 	if err != nil {
+		logger.Errorf("insertHistorik errd %s", err.Error())
 		return 0, fmt.Errorf("failed to insert historik: %w", err)
 	}
 
 	if p.DryRun {
-		log.Printf("[DRY RUN] Would have inserted HistorikId %d. Rolling back.", newID)
+		logger.Infof("[DRY RUN] Would have inserted HistorikId %d. Rolling back.", newID)
 		_ = tx.Rollback()
 		tx = nil
 		return newID, nil
@@ -274,7 +278,7 @@ func InsertHistorik(p InsertHistorikParams) (int, error) {
 	}
 	tx = nil
 
-	log.Printf("Inserted HistorikId %d. Committed.", newID)
+	logger.Infof("Inserted HistorikId %d. Committed.", newID)
 	return newID, nil
 }
 
@@ -518,6 +522,7 @@ func AddNoteToAdvopro(visit models.Visit) bool {
 		DryRun:        true, // flip to false when ready
 	})
 	if err != nil {
+		logger.Errorf("Note insert failed %s", err.Error())
 		log.Fatalf("Insert failed: %v", err)
 	}
 	//logger.Infof("Would have inserted HistorikId: %d", newID)
