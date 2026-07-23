@@ -42,15 +42,18 @@ func VisitPDF(c *gin.Context) {
 		})
 		return
 	}
-	ok := internal.AddNoteToAdvopro(visitcheck)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Advopro integration went wrong",
-			"id":    visitcheck.Sagsnr,
-		})
-		return
-	}
+	/*
+		we dont add a note just because someone wants to look at a pdf
 
+			ok := internal.AddNoteToAdvopro(visitcheck)
+			if !ok {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "Advopro integration went wrong",
+					"id":    visitcheck.Sagsnr,
+				})
+				return
+			}
+	*/
 	var visit models.Visit
 	initializers.DB.First(&visit, visitID)
 	filename := "id" + strconv.Itoa(int(visit.ID)) + "_sagsnr" + strconv.Itoa(int(visit.Sagsnr)) + ".pdf"
