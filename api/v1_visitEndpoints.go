@@ -341,12 +341,19 @@ func CreateVisitResponse(c *gin.Context) {
 		}
 	}
 
-	err = internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID) // the temporary endpoint
+	// Update status - handle the case where the visit is already in target status (retry scenario)
+	err = internal.UpdateVisitStatus(visitResponse.VisitID, 6, user.ID)
 	if err != nil {
-		logger.Error("Failed to update status" + err.Error())
-		c.JSON(500, gin.H{"error": "Failed to update status"})
-		return
+		if err.Error() == "the record is already in that status code" {
+			// This is expected on retries - log as info and continue
+			logger.Info("Visit " + strconv.Itoa(int(visitResponse.VisitID)) + " is already in status 6 (retry scenario)")
+		} else {
+			logger.Error("Failed to update status: " + err.Error())
+			c.JSON(500, gin.H{"error": "Failed to update status"})
+			return
+		}
 	}
+
 	c.JSON(200, visitResponse)
 }
 

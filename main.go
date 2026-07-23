@@ -30,7 +30,7 @@ func test() {
 	logger.Info("starting test")
 	//internal.CurrentDebtCase(114429)
 	//internal.GeneratePDFVisit(1)
-	internal.GetBesogsbrev(283)
+	//internal.GetBesogsbrev(283)
 
 	logger.Info("test over")
 }
@@ -118,6 +118,10 @@ func start_server() {
 		apiv1.GET("/penneo/events/:caseFileId", api.PenneoSSE)
 
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
+
+		apiv1.GET("/tsp/health", internal.HealthHandler)
+		apiv1.POST("/tsp/optimize", internal.OptimizeHandler)
+		apiv1.GET("/tsp/debug", internal.DebugMatrixHandler)
 
 		// penneo integration
 

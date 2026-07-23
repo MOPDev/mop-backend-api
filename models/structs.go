@@ -145,25 +145,26 @@ type VisitType struct {
 
 type Visit struct {
 	gorm.Model
-	UserID          uint             `json:"user_id"`
-	User            User             `json:"user"`
-	Address         string           `json:"address"`
-	Latitude        string           `json:"latitude"`
-	Longitude       string           `json:"longitude"`
-	Notes           string           `json:"notes"`
-	Sagsnr          uint             `json:"sagsnr"`
-	Stopnr          uint             `json:"stop_nr"`
-	VisitDate       time.Time        `json:"visit_date" gorm:"type:date"`
-	VisitTime       string           `json:"visit_time"`
-	VisitInterval   string           `json:"visit_interval"`
-	Visited         bool             `json:"visited"`
-	StatusID        uint             `json:"status_id" gorm:"not null;default:1"` // <-- Add this
-	Status          VisitStatus      `json:"status" gorm:"foreignKey:StatusID"`   // <-- Keep this for relation
-	Debitors        []Debitor        `json:"debitors" gorm:"many2many:visit_debitors;"`
-	VisitResponse   *VisitResponse   `json:"visit_response" gorm:"foreignKey:VisitID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	VisitStatusLogs []VisitStatusLog `json:"visit_status_logs" gorm:"foreignKey:VisitID"`
-	TypeID          uint             `json:"type_id"`
-	Type            VisitType        `json:"type" gorm:"foreignKey:TypeID"`
+	UserID           uint             `json:"user_id"`
+	User             User             `json:"user"`
+	Address          string           `json:"address"`
+	GeocodingAddress string           `json:"geocoding_address"`
+	Latitude         string           `json:"latitude"`
+	Longitude        string           `json:"longitude"`
+	Notes            string           `json:"notes"`
+	Sagsnr           uint             `json:"sagsnr"`
+	Stopnr           uint             `json:"stop_nr"`
+	VisitDate        time.Time        `json:"visit_date" gorm:"type:date"`
+	VisitTime        string           `json:"visit_time"`
+	VisitInterval    string           `json:"visit_interval"`
+	Visited          bool             `json:"visited"`
+	StatusID         uint             `json:"status_id" gorm:"not null;default:1"` // <-- Add this
+	Status           VisitStatus      `json:"status" gorm:"foreignKey:StatusID"`   // <-- Keep this for relation
+	Debitors         []Debitor        `json:"debitors" gorm:"many2many:visit_debitors;"`
+	VisitResponse    *VisitResponse   `json:"visit_response" gorm:"foreignKey:VisitID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	VisitStatusLogs  []VisitStatusLog `json:"visit_status_logs" gorm:"foreignKey:VisitID"`
+	TypeID           uint             `json:"type_id"`
+	Type             VisitType        `json:"type" gorm:"foreignKey:TypeID"`
 	// these are for data in the excel sheet
 	AdvoproStatus       uint   `json:"advopro__status"`
 	AdvoproStatusText   string `json:"advopro_status_text"`
@@ -173,6 +174,7 @@ type Visit struct {
 	GroupId *uint `json:"group_id"`
 
 	Cancelled *bool `json:"cancelled"` // for use in the soft delete for the UI
+
 }
 
 type VisitResponse struct {
