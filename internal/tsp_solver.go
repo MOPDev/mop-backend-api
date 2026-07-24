@@ -28,9 +28,11 @@ type Waypoint struct {
 }
 
 type OptimizeRequest struct {
-	Waypoints []Waypoint `json:"waypoints"`
-	Costing   string     `json:"costing"`
-	Mode      string     `json:"mode"` // "distance" or "time"
+	Waypoints  []Waypoint `json:"waypoints"`
+	Costing    string     `json:"costing"`
+	Mode       string     `json:"mode"`
+	FixedStart bool       `json:"fixed_start"` // Lock waypoints[0] as start
+	FixedEnd   bool       `json:"fixed_end"`   // Lock waypoints[last] as end
 }
 
 type OptimizeResponse struct {
@@ -83,8 +85,10 @@ type ValhallaRouteResponse struct {
 
 // ========== TSP Solver ==========
 
-func heldKarp(matrix [][]float64, startIdx int) ([]int, float64, int) {
+func heldKarp(matrix [][]float64, startIdx int, fixedEndIdx int) ([]int, float64, int) {
 	n := len(matrix)
+	hasFixedEnd := fixedEndIdx >= 0
+
 	if n <= 2 {
 		if n == 1 {
 			return []int{0}, 0, 0
@@ -143,18 +147,24 @@ func heldKarp(matrix [][]float64, startIdx int) ([]int, float64, int) {
 	minCost := math.Inf(1)
 	bestEnd := -1
 
-	// Find the best endpoint (any point except start)
-	for end := 0; end < n; end++ {
-		if end == startIdx {
-			continue
-		}
-		if dp[fullMask][end] < minCost {
-			minCost = dp[fullMask][end]
-			bestEnd = end
+	if hasFixedEnd {
+		// Must end at fixedEndIdx
+		bestEnd = fixedEndIdx
+		minCost = dp[fullMask][fixedEndIdx]
+	} else {
+		// Find the best endpoint (any point except start)
+		for end := 0; end < n; end++ {
+			if end == startIdx {
+				continue
+			}
+			if dp[fullMask][end] < minCost {
+				minCost = dp[fullMask][end]
+				bestEnd = end
+			}
 		}
 	}
 
-	if bestEnd == -1 {
+	if bestEnd == -1 || math.IsInf(minCost, 1) {
 		// Fallback: just return original order
 		order := make([]int, n)
 		for i := 0; i < n; i++ {
@@ -180,23 +190,27 @@ func heldKarp(matrix [][]float64, startIdx int) ([]int, float64, int) {
 	return order, minCost, bestEnd
 }
 
-func twoOpt(order []int, matrix [][]float64, fixedStart, fixedEnd int) ([]int, float64) {
+func twoOpt(order []int, matrix [][]float64, fixedStart, fixedEnd int, hasFixedEnd bool) ([]int, float64) {
 	n := len(order)
 	improved := true
 	currentDist := calculateTourDistance(order, matrix)
 
+	// Determine the range we're allowed to modify
+	// Index 0 is always fixed (start)
+	// If hasFixedEnd, index n-1 is also fixed
+	lastModifiableIdx := n - 1
+	if hasFixedEnd {
+		lastModifiableIdx = n - 2 // Don't touch the last element
+	}
+
 	for improved {
 		improved = false
-		for i := 1; i < n-2; i++ { // Don't touch index 0
-			for j := i + 1; j < n-1; j++ { // Don't touch last index
-				// Skip if either is the fixed end
-				if order[i] == fixedEnd || order[j] == fixedEnd {
-					continue
-				}
-
+		for i := 1; i <= lastModifiableIdx; i++ {
+			for j := i + 1; j <= lastModifiableIdx; j++ {
 				newOrder := make([]int, n)
 				copy(newOrder, order)
 
+				// Reverse segment [i, j]
 				for k := 0; k <= j-i; k++ {
 					newOrder[i+k] = order[j-k]
 				}
@@ -212,6 +226,53 @@ func twoOpt(order []int, matrix [][]float64, fixedStart, fixedEnd int) ([]int, f
 	}
 
 	return order, currentDist
+}
+
+func nearestNeighbor(matrix [][]float64, startIdx int, fixedEndIdx int) []int {
+	n := len(matrix)
+	hasFixedEnd := fixedEndIdx >= 0
+	visited := make([]bool, n)
+	order := make([]int, n)
+
+	order[0] = startIdx
+	visited[startIdx] = true
+	if hasFixedEnd {
+		visited[fixedEndIdx] = true // Reserve it for last position
+	}
+
+	current := startIdx
+	// Fill all positions except the last (if fixed)
+	endLimit := n
+	if hasFixedEnd {
+		endLimit = n - 1
+	}
+
+	for i := 1; i < endLimit; i++ {
+		bestNext := -1
+		bestDist := math.Inf(1)
+
+		for j := 0; j < n; j++ {
+			if !visited[j] && matrix[current][j] < bestDist {
+				bestDist = matrix[current][j]
+				bestNext = j
+			}
+		}
+
+		if bestNext == -1 {
+			// No unvisited node found (shouldn't happen normally)
+			break
+		}
+
+		order[i] = bestNext
+		visited[bestNext] = true
+		current = bestNext
+	}
+
+	if hasFixedEnd {
+		order[n-1] = fixedEndIdx
+	}
+
+	return order
 }
 
 func calculateTourDistance(order []int, matrix [][]float64) float64 {
@@ -310,13 +371,27 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 
 	// ADD THIS DEBUG LOGGING
 	fmt.Printf("=== MATRIX DEBUG ===\n")
+	// Print column headers
+	fmt.Printf("      ")
+	for j := 0; j < len(locations); j++ {
+		fmt.Printf(" %6d", j)
+	}
+	fmt.Printf("\n")
+
+	// Print rows with row headers
 	for i := 0; i < len(locations); i++ {
+		fmt.Printf(" %4d ", i)
 		for j := 0; j < len(locations); j++ {
-			var val = matrix[i][j]
+			val := matrix[i][j]
 			if matrix[i][j] > 9999990.0 {
-				val = 0
+				val = -1
 			}
-			fmt.Printf("[%d->%d]:%.2f ", i, j, val)
+			// Truncate large numbers for display
+			if val > 999999 {
+				fmt.Printf(" %6s", ">999k")
+			} else {
+				fmt.Printf(" %6.0f", val)
+			}
 		}
 		fmt.Printf("\n")
 	}
@@ -332,7 +407,7 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 func getRouteFromValhalla(waypoints []Waypoint, costing, mode string) (*ValhallaRouteResponse, error) {
 	locations := make([]Location, len(waypoints))
 	for i, w := range waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon}
+		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 50}
 	}
 
 	req := ValhallaRouteRequest{
@@ -489,7 +564,7 @@ func OptimizeHandler(c *gin.Context) {
 	// Step 1: Get distance matrix from Valhalla
 	locations := make([]Location, len(req.Waypoints))
 	for i, w := range req.Waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 1000}
+		locations[i] = Location{Lat: w.Lat, Lon: w.Lon}
 	}
 
 	start := time.Now()
@@ -500,28 +575,73 @@ func OptimizeHandler(c *gin.Context) {
 	}
 	fmt.Printf("[%s] Matrix fetch took %v\n", time.Now().Format(time.RFC3339), time.Since(start))
 
-	// ADD THIS DEBUG LOGGING
-	/*
-		fmt.Printf("=== MATRIX DEBUG ===\n")
-		fmt.Printf("Using mode: %s\n", req.Mode)
-		for i := 0; i < len(locations) && i < 5; i++ {
-			for j := 0; j < len(locations) && j < 5; j++ {
-				fmt.Printf("  [%d->%d]: %.2f ", i, j, matrix[i][j])
-			}
-			fmt.Printf("\n")
-		}
-		fmt.Printf("===================\n")
-	*/
-
-	// Step 2: Solve TSP
+	// Step 2: Determine start/end indices based on flags
 	solveStart := time.Now()
-	startIdx := 0
 
-	order, cost, endIdx := heldKarp(matrix, startIdx)
-	// Apply 2-opt if more than 5 points (but preserve endpoints)
-	if len(req.Waypoints) > 5 {
-		order, cost = twoOpt(order, matrix, startIdx, endIdx)
+	startIdx := 0
+	fixedEndIdx := -1 // -1 means "not fixed"
+
+	n := len(req.Waypoints)
+
+	if req.FixedStart && req.FixedEnd {
+		// Both fixed: waypoints[0] is start, waypoints[n-1] is end
+		startIdx = 0
+		fixedEndIdx = n - 1
+	} else if req.FixedStart && !req.FixedEnd {
+		// Only start fixed: waypoints[0] is start, end is free
+		startIdx = 0
+		fixedEndIdx = -1
+	} else if !req.FixedStart && req.FixedEnd {
+		// Only end fixed: we need to swap - treat waypoints[n-1] as our "start"
+		// for the algorithm, then reverse at the end. OR, better: use it as fixed end directly
+		// by picking a free start (algorithm will choose best start too)
+
+		// Actually easiest: swap start/end concept - use last point as anchor
+		// We'll run heldKarp with startIdx = n-1 (fixed end becomes "start" in reverse)
+		// But this changes direction. Let's handle it more directly:
+
+		startIdx = -1 // signal "free start"
+		fixedEndIdx = n - 1
+	} else {
+		// Neither fixed: fully free (classic open TSP)
+		startIdx = -1
+		fixedEndIdx = -1
 	}
+
+	var order []int
+	var cost float64
+
+	if n <= 25 {
+		if startIdx == -1 && fixedEndIdx == -1 {
+			// Fully free - try all possible starts, pick best
+			// (expensive but n<=25 so feasible? Actually this multiplies by n)
+			// Simpler: just fix start=0 arbitrarily since it's a symmetric-ish problem
+			// OR run held karp with reversed matrix trick
+			order, cost, _ = heldKarp(matrix, 0, -1)
+		} else if startIdx == -1 && fixedEndIdx >= 0 {
+			// Free start, fixed end: reverse the matrix and run with fixedEndIdx as start
+			reversedMatrix := reverseMatrix(matrix)
+			revOrder, revCost, _ := heldKarp(reversedMatrix, fixedEndIdx, -1)
+			order = reverseOrder(revOrder)
+			cost = revCost
+		} else {
+			// Fixed start (possibly also fixed end)
+			order, cost, _ = heldKarp(matrix, startIdx, fixedEndIdx)
+		}
+	} else {
+		// Larger problem: nearest neighbor + 2-opt
+		effectiveStart := startIdx
+		if effectiveStart == -1 {
+			effectiveStart = 0 // arbitrary pick for NN
+		}
+
+		nnOrder := nearestNeighbor(matrix, effectiveStart, fixedEndIdx)
+		cost = calculateTourDistance(nnOrder, matrix)
+
+		hasFixedEnd := fixedEndIdx >= 0
+		order, cost = twoOpt(nnOrder, matrix, effectiveStart, fixedEndIdx, hasFixedEnd)
+	}
+
 	fmt.Printf("[%s] TSP solve took %v (cost: %.2f)\n", time.Now().Format(time.RFC3339), time.Since(solveStart), cost)
 
 	// Step 3: Reorder waypoints
@@ -555,6 +675,29 @@ func OptimizeHandler(c *gin.Context) {
 
 	fmt.Printf("[%s] Total optimization time: %v\n", time.Now().Format(time.RFC3339), time.Since(start))
 	c.JSON(http.StatusOK, response)
+}
+
+// Helper: reverse a matrix (swap from/to) for "fixed end, free start" case
+func reverseMatrix(matrix [][]float64) [][]float64 {
+	n := len(matrix)
+	reversed := make([][]float64, n)
+	for i := range reversed {
+		reversed[i] = make([]float64, n)
+		for j := range reversed[i] {
+			reversed[i][j] = matrix[j][i] // transpose
+		}
+	}
+	return reversed
+}
+
+// Helper: reverse an order slice
+func reverseOrder(order []int) []int {
+	n := len(order)
+	reversed := make([]int, n)
+	for i, v := range order {
+		reversed[n-1-i] = v
+	}
+	return reversed
 }
 
 // Health check endpoint

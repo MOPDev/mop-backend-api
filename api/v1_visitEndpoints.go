@@ -507,12 +507,14 @@ func AktivitersRapport(c *gin.Context) {
 
 	filepath, err := internal.GetAktivitetsrapporten(visitID)
 	if err != nil {
+		logger.Errorf("error occured during filepath retrival: %s", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	pdfPath, err := internal.ConvertDocxToPdf(filepath)
 	if err != nil {
+		logger.Errorf("error occured during docx to pdf: %s", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
