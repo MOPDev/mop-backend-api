@@ -153,7 +153,6 @@ type Visit struct {
 	Longitude        string           `json:"longitude"`
 	Notes            string           `json:"notes"`
 	Sagsnr           uint             `json:"sagsnr"`
-	Stopnr           uint             `json:"stop_nr"`
 	VisitDate        time.Time        `json:"visit_date" gorm:"type:date"`
 	VisitTime        string           `json:"visit_time"`
 	VisitInterval    string           `json:"visit_interval"`
@@ -170,8 +169,12 @@ type Visit struct {
 	AdvoproStatusText   string `json:"advopro_status_text"`
 	AdvoproDeadlineDate string `json:"advopro_deadline_date"`
 	AdvoproKlient       string `json:"advopro_klient"`
+
 	// a new type of ID for grouping
-	GroupId *uint `json:"group_id"`
+	// now we can do route optimisation
+	GroupId      *uint `json:"group_id"`
+	SegmentIndex *uint `json:"segment_index"`
+	Stopnr       *uint `json:"stop_nr"`
 
 	Cancelled *bool `json:"cancelled"` // for use in the soft delete for the UI
 
