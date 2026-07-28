@@ -13,6 +13,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
+	"github.com/agnivade/levenshtein"
 	_ "github.com/denisenkom/go-mssqldb"
 )
 
@@ -305,7 +306,6 @@ func GetAktivitetsrapporten(visitId uint64) (string, error) {
     FROM vwKlientSagsforlob sf
     WHERE sf.Sagsnr = @p1
     AND sf.Extension = 'docx'
-    AND LOWER(sf.Tekst) LIKE '%aktivitetsrapport%'
     ORDER BY sf.Sagsnr`
 
 	// Build path to the mounted drive
@@ -318,20 +318,37 @@ func GetAktivitetsrapporten(visitId uint64) (string, error) {
 	// Sagsnr	Placering	Filnavn	Tekst	Tidspunkt
 	// 636000	\\MOPSRV01\AdvoPro\Opgaver\Jurist\MBB\636000	99999999.docx	Aktivitetsrapport	2024-05-30 09:35:14.270
 	// 636001	\\MOPSRV01\AdvoPro\Opgaver\Jurist\MBB\636001	99999999.docx	Aktivitetsrapport	2024-06-06 11:11:52.383
+	const target = "aktivitetsrapport"
+	const maxDistance = 3 // ponytail: allows ~3 char typos, tune if real data needs looser/tighter match
 
-	if len(advoproResult) == 0 {
-		return "", fmt.Errorf("There was no result")
+	bestIndex := -1
+	bestDist := maxDistance + 1
+
+	for index, row := range advoproResult {
+		needle, ok := row["Tekst"].(string)
+		if !ok {
+			logger.Error("Error during string conversion in GetAktivitetsrapporten")
+			continue
+		}
+		dist := levenshtein.ComputeDistance(strings.ToLower(needle), target)
+		if dist < bestDist {
+			bestDist = dist
+			bestIndex = index
+		}
 	}
 
-	winPlacering := toString(advoproResult[0]["Placering"]) // "\\MOPSRV01\AdvoPro\Opgaver\..."
-	winFilnavn := toString(advoproResult[0]["Filnavn"])     // "99999999.docx"
+	if bestIndex == -1 {
+		return "", fmt.Errorf("there was no result")
+	}
+
+	winPlacering := toString(advoproResult[bestIndex]["Placering"]) // "\\MOPSRV01\AdvoPro\Opgaver\..."
+	winFilnavn := toString(advoproResult[bestIndex]["Filnavn"])     // "99999999.docx"
 
 	// 1. If running on your local Windows machine
 	if runtime.GOOS == "windows" {
 		// Windows handles backslashes and UNC paths (\\Server\Share) natively
 		return filepath.Join(winPlacering, winFilnavn), nil
 	}
-
 	// 2. Define the translation rules
 	winPrefix := `\\MOPSRV01\AdvoPro`
 	linuxMount := "/mnt/advopro"

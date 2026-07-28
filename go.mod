@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/360EntSecGroup-Skylar/excelize v1.4.1
+	github.com/agnivade/levenshtein v1.2.1
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
