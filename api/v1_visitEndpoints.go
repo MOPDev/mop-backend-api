@@ -594,6 +594,42 @@ func GetSFHandler(c *gin.Context) {
 	c.Data(http.StatusOK, "application/pdf", fileBytes)
 }
 
+func CheckBatchHandler(c *gin.Context) {
+	idsStr := c.Query("ids")
+	if idsStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids query param required"})
+		return
+	}
+
+	results := make(map[string]bool)
+	for _, part := range strings.Split(idsStr, ",") {
+		id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id: " + part})
+			return
+		}
+
+		var visit models.Visit
+		if err := initializers.DB.First(&visit, id).Error; err != nil {
+			results[part] = false
+			continue
+		}
+
+		var reqType *uint
+		if visit.TypeID == 1 {
+			// kobekontrakt also needs SF; check both
+			one := uint(1)
+			reqType = &one
+			results[part] = internal.DocExists(id, nil) == nil && internal.DocExists(id, reqType) == nil
+			continue
+		}
+
+		results[part] = internal.DocExists(id, nil) == nil
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
 // BatchHandler merges besogsbrev (page 2) + SF (page 3) for each visit into one PDF.
 // SF is skipped silently if the visit is not a kobekontrakt.
 func GetBatchHandler(c *gin.Context) {
@@ -613,24 +649,78 @@ func GetBatchHandler(c *gin.Context) {
 			return
 		}
 
-		b, err := internal.GetBesogsbrev(id)
+		var visit models.Visit
+		err = initializers.DB.First(&visit, id).Error
 		if err != nil {
-			logger.Errorf("Failed to get besogsbrev for visit ID %d: %s", id, err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
-			return
+			logger.Errorf("cant find visit in DB: %s", err.Error())
 		}
-		pdfs = append(pdfs, b)
 
-		sf, err := internal.GetSF(id)
-		if err == nil {
+		switch visit.TypeID {
+		case 1: // kobekontrakt, get SF also
+			b, err := internal.GetBesogsbrev(id)
+			if err != nil {
+				logger.Errorf("Besogsbrev error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				return
+			}
+			pdfs = append(pdfs, b)
+
+			// getting salgsfuldmagt
+			sf, err := internal.GetSF(id)
+			if err != nil {
+				logger.Errorf("salgsfuldmagt error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				return
+
+			}
 			pdfs = append(pdfs, sf)
-		} // ponytail: non-kobekontrakt visits return an error from GetSF, silently skip
 
-		visitLetter, err := internal.Getbrev(id)
-		if err == nil {
+		case 2: // Leasing
+			b, err := internal.GetBesogsbrev(id)
+			if err != nil {
+				logger.Errorf("Besogsbrev error for Leasing, visitid %d, err: %s", visit.ID, err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				return
+
+			}
+			pdfs = append(pdfs, b)
+
+		case 3: // blanco
+			b, err := internal.GetBesogsbrev(id)
+			if err != nil {
+				logger.Errorf("Besogsbrev error for blanco, visitid %d, err: %s", visit.ID, err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				return
+
+			}
+			pdfs = append(pdfs, b)
+
+		case 4: // brev
+			visitLetter, err := internal.Getbrev(id)
+			if err != nil {
+				logger.Errorf("brev error for blanco, visitid %d, err: %s", visit.ID, err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				return
+
+			}
 			pdfs = append(pdfs, visitLetter)
-		} // ponytail: non-kobekontrakt visits return an error from Getbrev, silently skip
+		default:
+			logger.Warn("No visittype is assigned defaulting to besogsbrev and SF")
+			b, err := internal.GetBesogsbrev(id)
+			if err != nil {
+				logger.Errorf("Besogsbrev error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
+				//silent error
+			}
+			pdfs = append(pdfs, b)
 
+			// getting salgsfuldmagt
+			sf, err := internal.GetSF(id)
+			if err != nil {
+				logger.Errorf("Besogsbrev error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
+				// silent error
+			}
+			pdfs = append(pdfs, sf)
+		}
 	}
 
 	merged, err := internal.MergePDFs(pdfs)

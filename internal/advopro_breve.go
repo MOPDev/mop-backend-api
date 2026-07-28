@@ -106,8 +106,8 @@ func ExtractPDFPage(pdfBytes []byte, pageNum int) ([]byte, error) {
 var KOBEKONTRAKT = `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
     FROM vwKlientSagsforlob sf
     WHERE sf.Sagsnr = @p1
-    AND sf.Extension = 'docx'
-    AND (
+	AND sf.Extension in ('docx','doc')    
+	AND (
         LOWER(sf.Tekst) LIKE '%besøgsbrev blanco sendt%' OR
         LOWER(sf.Tekst) LIKE '%besøgsbrev bil sendt%'
     )
@@ -116,7 +116,7 @@ var KOBEKONTRAKT = `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tid
 var BESOGSBREV = `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
     FROM vwKlientSagsforlob sf
     WHERE sf.Sagsnr = @p1
-    AND sf.Extension = 'docx'
+	AND sf.Extension in ('docx','doc')
     AND (
         LOWER(sf.Tekst) LIKE '%inkassobrev sendt > 1. ring%'
     )
@@ -178,6 +178,41 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
 	}
 
 	return ExtractPDFPage(fileBytes, page)
+}
+
+// ponytail: reuses getDocPage's lookup, stops before PDF conversion (expensive, unneeded for a check)
+func DocExists(visitId uint64, requireTypeID *uint) error {
+	var visit models.Visit
+	if err := initializers.DB.First(&visit, visitId).Error; err != nil {
+		return err
+	}
+	if requireTypeID != nil && visit.TypeID != *requireTypeID {
+		return fmt.Errorf("visit %d is not type %d", visitId, *requireTypeID)
+	}
+
+	var query string
+	switch visit.TypeID {
+	case 4:
+		query = BESOGSBREV
+	default:
+		query = KOBEKONTRAKT
+	}
+
+	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("no document found for case %d", visit.Sagsnr)
+	}
+
+	letterPath := resolveDocPath(toString(rows[0]["Placering"]), toString(rows[0]["Filnavn"]))
+	if runtime.GOOS != "windows" {
+		if _, err := os.Stat(letterPath); os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist at path: %s", letterPath)
+		}
+	}
+	return nil
 }
 
 func resolveDocPath(winPlacering, winFilnavn string) string {

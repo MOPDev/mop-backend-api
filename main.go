@@ -22,17 +22,7 @@ func init() {
 }
 
 func main() {
-	//test()
 	start_server()
-}
-
-func test() {
-	logger.Info("starting test")
-	//internal.CurrentDebtCase(114429)
-	//internal.GeneratePDFVisit(1)
-	//internal.GetBesogsbrev(283)
-
-	logger.Info("test over")
 }
 
 func start_server() {
@@ -94,6 +84,7 @@ func start_server() {
 		apiv1.GET("/visits/:visitId/besogsbrev", middleware.RequireAuthUser, api.GetBesogsbrevHandler)
 		apiv1.GET("/visits/:visitId/SF", middleware.RequireAuthUser, api.GetSFHandler)
 		apiv1.GET("/visits/besogsbrev/batch", middleware.RequireAuthUser, api.GetBatchHandler)
+		apiv1.GET("/documents/check", middleware.RequireAuthUser, api.CheckBatchHandler)
 
 		apiv1.PATCH("/visits/:id/group", middleware.RequireAuthOfficeWorker, api.ChangeGroupId)                  // move a singe visit to a new groupId
 		apiv1.PATCH("/visits/group/:groupId/date", middleware.RequireAuthOfficeWorker, api.ChangeGroupDate)      // change the date of all visits with a groupID
