@@ -334,16 +334,16 @@ type MonetaryQuestions struct {
 	Position string `json:"position"`
 
 	// Split NetSalary into Min and Max (using custom Money pointers)
-	NetSalaryMin *Money `json:"net_salary_min" binding:"omitempty,ltefield=NetSalaryMax" gorm:"type:bigint"`
-	NetSalaryMax *Money `json:"net_salary_max" binding:"omitempty,gtefield=NetSalaryMin" gorm:"type:bigint"`
+	NetSalaryMin *Money `json:"net_salary_min" gorm:"type:bigint"`
+	NetSalaryMax *Money `json:"net_salary_max" gorm:"type:bigint"`
 
 	// Other income rough amounts - offentlige ydelser
-	IncomePaymentMin *Money `json:"income_payment_min" binding:"omitempty,ltefield=IncomePaymentMax" gorm:"type:bigint"`
-	IncomePaymentMax *Money `json:"income_payment_max" binding:"omitempty,gtefield=IncomePaymentMin" gorm:"type:bigint"`
+	IncomePaymentMin *Money `json:"income_payment_min" gorm:"type:bigint"`
+	IncomePaymentMax *Money `json:"income_payment_max" gorm:"type:bigint"`
 
 	// Disposable Income Range
-	MonthlyDisposableMin *Money `json:"monthly_disposable_min" binding:"omitempty,ltefield=MonthlyDisposableMax" gorm:"type:bigint"`
-	MonthlyDisposableMax *Money `json:"monthly_disposable_max" binding:"omitempty,gtefield=MonthlyDisposableMin" gorm:"type:bigint"`
+	MonthlyDisposableMin *Money `json:"monthly_disposable_min" gorm:"type:bigint"`
+	MonthlyDisposableMax *Money `json:"monthly_disposable_max" gorm:"type:bigint"`
 
 	// Other debt being paid per month roughly
 	DebtAmountPaid *Money `json:"debt_amount_paid" gorm:"type:bigint"`

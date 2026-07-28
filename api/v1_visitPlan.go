@@ -284,23 +284,27 @@ func PatchVisit(c *gin.Context) {
 
 	visitID, err := strconv.ParseUint(visitIDStr, 10, 64)
 	if err != nil {
+		logger.Errorf("Failed to parse visit ID '%s' to uint64: %s", visitIDStr, err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
 		return
 	}
 
 	var updates map[string]interface{}
 	if err := c.ShouldBindJSON(&updates); err != nil {
+		logger.Errorf("Failed to bind JSON request body for visit ID %d: %s", visitID, err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
 		return
 	}
 
 	var existingVisit models.Visit
 	if err := initializers.DB.First(&existingVisit, visitID).Error; err != nil {
+		logger.Errorf("Visit with ID %d not found in database: %s", visitID, err.Error())
 		c.JSON(http.StatusNotFound, gin.H{"error": "Visit not found"})
 		return
 	}
 
 	if err := initializers.DB.Model(&existingVisit).Updates(updates).Error; err != nil {
+		logger.Errorf("Failed to update visit with ID %d: %s", visitID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

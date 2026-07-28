@@ -293,7 +293,15 @@ func Visit_responses(c *gin.Context) {
 		})
 }
 
-// POST /visit-response (form data only)
+// ponytail: swap so Min/Max is always ordered instead of rejecting the request;
+// caller doesn't care which field was typed as "higher"
+func orderMoney(min, max **models.Money) {
+	if *min != nil && *max != nil && **min > **max {
+		*min, *max = *max, *min
+	}
+}
+
+// POST /visit-response
 func CreateVisitResponse(c *gin.Context) {
 	user, ok := getVerifyUser(c)
 	if !ok {
@@ -307,6 +315,11 @@ func CreateVisitResponse(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+
+	m := &visitResponse.Monetary
+	orderMoney(&m.NetSalaryMin, &m.NetSalaryMax)
+	orderMoney(&m.IncomePaymentMin, &m.IncomePaymentMax)
+	orderMoney(&m.MonthlyDisposableMin, &m.MonthlyDisposableMax)
 
 	// ponytail: upsert on visit_id so a retry after failed image upload
 	// re-uses the existing response instead of erroring out
@@ -585,6 +598,7 @@ func GetSFHandler(c *gin.Context) {
 func GetBatchHandler(c *gin.Context) {
 	idsStr := c.Query("ids")
 	if idsStr == "" {
+		logger.Errorf("Missing 'ids' query parameter in request")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ids query param required"})
 		return
 	}
@@ -593,12 +607,14 @@ func GetBatchHandler(c *gin.Context) {
 	for _, part := range strings.Split(idsStr, ",") {
 		id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64)
 		if err != nil {
+			logger.Errorf("Failed to parse ID '%s' to uint64: %s", strings.TrimSpace(part), err.Error())
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id: " + part})
 			return
 		}
 
 		b, err := internal.GetBesogsbrev(id)
 		if err != nil {
+			logger.Errorf("Failed to get besogsbrev for visit ID %d: %s", id, err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
 			return
 		}
@@ -613,6 +629,7 @@ func GetBatchHandler(c *gin.Context) {
 
 	merged, err := internal.MergePDFs(pdfs)
 	if err != nil {
+		logger.Errorf("Failed to merge PDFs for visit IDs '%s': %s", idsStr, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to merge PDFs: " + err.Error()})
 		return
 	}
