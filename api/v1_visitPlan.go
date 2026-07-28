@@ -175,6 +175,9 @@ func PlanVisit(c *gin.Context) {
 			continue
 		}
 
+		stopNrUintConv := uint(stopNrUint)
+		stopnruintptr := &stopNrUintConv
+
 		prepared = append(prepared, preparedRow{
 			rowNum:        rowNum,
 			visitID:       uint(visitIDUint),
@@ -187,7 +190,7 @@ func PlanVisit(c *gin.Context) {
 				VisitTime:           rowData["Arrival Time"],
 				VisitInterval:       visitInterval,
 				VisitDate:           parsedDate,
-				Stopnr:              uint(stopNrUint),
+				Stopnr:              stopnruintptr,
 				Address:             rowData["Address"],
 				UserID:              uint(userIDUint),
 				Sagsnr:              uint(sagsnrUint),

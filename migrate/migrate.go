@@ -172,7 +172,6 @@ func zodMigrate() {
 		Longitude           string                  `json:"longitude"`
 		Notes               string                  `json:"notes"`
 		Sagsnr              uint                    `json:"sagsnr"`
-		Stopnr              uint                    `json:"stop_nr"`
 		VisitDate           time.Time               `json:"visit_date"`
 		VisitTime           string                  `json:"visit_time"`
 		VisitInterval       string                  `json:"visit_interval"`
@@ -188,6 +187,8 @@ func zodMigrate() {
 		AdvoproDeadlineDate string                  `json:"advopro_deadline_date"`
 		AdvoproKlient       string                  `json:"advopro_klient"`
 		GroupId             *uint                   `json:"group_id"`
+		Stopnr              *uint                   `json:"stop_nr"`
+		SegmentIndex        *uint                   `json:"segment_index"`
 		Cancelled           *bool                   `json:"cancelled"`
 		// NO Debitors
 	}

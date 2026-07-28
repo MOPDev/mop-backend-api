@@ -133,7 +133,7 @@ func GenerateVisitsPlanExcel(visits []models.Visit) (*excelize.File, error) {
 		// Interval
 
 		data := []interface{}{
-			visit.Stopnr,                           // stop
+			*visit.Stopnr,                          // stop
 			visit.Sagsnr,                           // sagsnr
 			replacer.Replace(visit.Address),        // address
 			visit.VisitTime,                        // arrival Time
