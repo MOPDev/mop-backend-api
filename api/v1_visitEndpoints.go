@@ -316,6 +316,7 @@ func CreateVisitResponse(c *gin.Context) {
 		return
 	}
 
+	// order the money, before it goes into the DB
 	m := &visitResponse.Monetary
 	orderMoney(&m.NetSalaryMin, &m.NetSalaryMax)
 	orderMoney(&m.IncomePaymentMin, &m.IncomePaymentMax)
@@ -623,8 +624,13 @@ func GetBatchHandler(c *gin.Context) {
 		sf, err := internal.GetSF(id)
 		if err == nil {
 			pdfs = append(pdfs, sf)
-		}
-		// ponytail: non-kobekontrakt visits return an error from GetSF, silently skip
+		} // ponytail: non-kobekontrakt visits return an error from GetSF, silently skip
+
+		visitLetter, err := internal.Getbrev(id)
+		if err == nil {
+			pdfs = append(pdfs, visitLetter)
+		} // ponytail: non-kobekontrakt visits return an error from Getbrev, silently skip
+
 	}
 
 	merged, err := internal.MergePDFs(pdfs)

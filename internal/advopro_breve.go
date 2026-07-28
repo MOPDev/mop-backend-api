@@ -14,6 +14,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 )
 
@@ -102,17 +103,7 @@ func ExtractPDFPage(pdfBytes []byte, pageNum int) ([]byte, error) {
 
 // internal/documents.go
 
-// ponytail: shared fetch+convert, page param selects the slice
-func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
-	var visit models.Visit
-	if err := initializers.DB.First(&visit, visitId).Error; err != nil {
-		return nil, err
-	}
-	if requireTypeID != nil && visit.TypeID != *requireTypeID {
-		return nil, fmt.Errorf("visit %d is not type %d", visitId, *requireTypeID)
-	}
-
-	query := `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
+var KOBEKONTRAKT = `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
     FROM vwKlientSagsforlob sf
     WHERE sf.Sagsnr = @p1
     AND sf.Extension = 'docx'
@@ -122,29 +113,67 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
     )
     ORDER BY sf.Tidspunkt desc`
 
-	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
-	if err != nil {
+var BESOGSBREV = `SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
+    FROM vwKlientSagsforlob sf
+    WHERE sf.Sagsnr = @p1
+    AND sf.Extension = 'docx'
+    AND (
+        LOWER(sf.Tekst) LIKE '%inkassobrev sendt > 1. ring%'
+    )
+    ORDER BY sf.Tidspunkt desc`
+
+// ponytail: shared fetch+convert, page param selects the slice
+func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
+	var visit models.Visit
+	if err := initializers.DB.First(&visit, visitId).Error; err != nil {
 		return nil, err
 	}
+	if requireTypeID != nil && visit.TypeID != *requireTypeID {
+		return nil, fmt.Errorf("visit %d is not type %d", visitId, *requireTypeID)
+	}
+	var query string
+	switch visit.TypeID {
+	case 1: // kobekontrakt
+		query = KOBEKONTRAKT
+	case 2: // Leasing
+		query = KOBEKONTRAKT
+	case 3: // blanco
+		query = KOBEKONTRAKT
+	case 4: // brev
+		query = BESOGSBREV
+	default:
+		query = KOBEKONTRAKT
+	}
+
+	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	if err != nil {
+		logger.Errorf("db err, docpage %s", err.Error())
+		return nil, err
+	}
+
 	if len(rows) == 0 {
+		logger.Errorf("No Document found for case %d", visit.Sagsnr)
 		return nil, fmt.Errorf("no document found for case %d", visit.Sagsnr)
 	}
 
 	letterPath := resolveDocPath(toString(rows[0]["Placering"]), toString(rows[0]["Filnavn"]))
 	if runtime.GOOS != "windows" {
 		if _, err := os.Stat(letterPath); os.IsNotExist(err) {
+			logger.Errorf("file cant be found at path: %s", err.Error())
 			return nil, fmt.Errorf("file does not exist at path: %s", letterPath)
 		}
 	}
 
 	pdfPath, err := ConvertDocxToPdf(letterPath)
 	if err != nil {
+		logger.Errorf("docx to pdf, failed: %s", err.Error())
 		return nil, fmt.Errorf("failed to convert document to PDF: %w", err)
 	}
 	defer os.Remove(pdfPath)
 
 	fileBytes, err := os.ReadFile(pdfPath)
 	if err != nil {
+		logger.Errorf("Reading file %s failed: %s", pdfPath, err.Error())
 		return nil, fmt.Errorf("failed to read PDF: %w", err)
 	}
 
@@ -158,6 +187,10 @@ func resolveDocPath(winPlacering, winFilnavn string) string {
 	rel := strings.TrimPrefix(winPlacering, `\\MOPSRV01\AdvoPro`)
 	rel = strings.ReplaceAll(rel, "\\", "/")
 	return filepath.Join("/mnt/advopro", rel, winFilnavn)
+}
+
+func Getbrev(visitId uint64) ([]byte, error) {
+	return getDocPage(visitId, nil, 1)
 }
 
 func GetBesogsbrev(visitId uint64) ([]byte, error) {
