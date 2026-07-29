@@ -7,8 +7,8 @@ import (
 	"github.com/MOPDev/mop-backend-api/api"
 	"github.com/MOPDev/mop-backend-api/api2"
 	"github.com/MOPDev/mop-backend-api/initializers"
-	"github.com/MOPDev/mop-backend-api/internal"
 	"github.com/MOPDev/mop-backend-api/internal/logger"
+	"github.com/MOPDev/mop-backend-api/internal/tsp"
 	"github.com/MOPDev/mop-backend-api/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -110,9 +110,8 @@ func start_server() {
 
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
 
-		apiv1.GET("/tsp/health", internal.HealthHandler)
-		apiv1.POST("/tsp/optimize", internal.OptimizeHandler)
-		apiv1.GET("/tsp/debug", internal.DebugMatrixHandler)
+		apiv1.GET("/tsp/health", tsp.HealthHandler)
+		apiv1.POST("/tsp/optimize", tsp.OptimizeHandler)
 
 		// penneo integration
 

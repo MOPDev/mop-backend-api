@@ -1,4 +1,4 @@
-package internal
+package tsp
 
 import (
 	"bytes"
@@ -116,14 +116,16 @@ func heldKarp(matrix [][]float64, startIdx int, fixedEndIdx int) ([]int, float64
 		if (mask & startMask) == 0 {
 			continue
 		}
-
 		for end := 0; end < n; end++ {
+			if end == startIdx {
+				continue
+			}
 			if (mask & (1 << end)) == 0 {
 				continue
 			}
-			if dp[mask][end] == math.Inf(1) {
-				continue
-			}
+			// removed: `if dp[mask][end] == math.Inf(1) { continue }`
+			// that guard skipped computing dp[mask][end] before ever trying,
+			// so every cell stayed +Inf.
 
 			prevMask := mask ^ (1 << end)
 			for prev := 0; prev < n; prev++ {
@@ -131,9 +133,11 @@ func heldKarp(matrix [][]float64, startIdx int, fixedEndIdx int) ([]int, float64
 					continue
 				}
 				if dp[prevMask][prev] == math.Inf(1) {
+					continue // correct here: prevMask/prev is the *source*, skip if unreached
+				}
+				if matrix[prev][end] < 0 {
 					continue
 				}
-
 				newDist := dp[prevMask][prev] + matrix[prev][end]
 				if newDist < dp[mask][end] {
 					dp[mask][end] = newDist
@@ -170,6 +174,7 @@ func heldKarp(matrix [][]float64, startIdx int, fixedEndIdx int) ([]int, float64
 		for i := 0; i < n; i++ {
 			order[i] = i
 		}
+
 		return order, matrix[0][n-1], n - 1
 	}
 
@@ -187,6 +192,7 @@ func heldKarp(matrix [][]float64, startIdx int, fixedEndIdx int) ([]int, float64
 	}
 
 	order[0] = startIdx
+
 	return order, minCost, bestEnd
 }
 
@@ -502,52 +508,6 @@ func permute(arr []int, start int, callback func([]int)) {
 }
 
 // ========== Handlers ==========
-
-func DebugMatrixHandler(c *gin.Context) {
-	// Simple test: 3 points in Jylland, 3 in Sjælland
-	testPoints := []Location{
-		{55.697838, 12.453019, 100}, // Jylland 1
-		{55.663697, 12.400465, 100}, // Jylland 2
-		{55.654232, 12.277284, 100}, // Jylland 3
-		{55.745842, 12.312660, 100}, // Sjælland 1
-		{55.941055, 12.341422, 100}, // Sjælland 2
-		{56.081821, 12.389189, 100}, // Sjælland 3
-	}
-
-	matrix, err := getMatrixFromValhalla(testPoints, "auto", "distance")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	type MatrixDebug struct {
-		Matrix [][]float64 `json:"matrix"`
-		Labels []string    `json:"labels"`
-		Extra  gin.H       `json:"extra,omitempty"` // Add this field
-	}
-
-	debug := MatrixDebug{
-		Matrix: matrix,
-		Labels: []string{"J1", "J2", "J3", "S1", "S2", "S3"},
-	}
-
-	// Check if Jylland->Jylland distances make sense
-	// and if crossing Storebælt adds appropriate distance
-	crossings := make(map[string]float64)
-	for i := 0; i < 3; i++ { // Jylland points
-		for j := 3; j < 6; j++ { // Sjælland points
-			key := fmt.Sprintf("%s->%s", debug.Labels[i], debug.Labels[j])
-			crossings[key] = matrix[i][j]
-		}
-	}
-
-	debug.Extra = gin.H{
-		"crossings":        crossings,
-		"jylland_internal": [][]float64{{matrix[0][1]}, {matrix[1][2]}}, // Each value in its own slice
-	}
-
-	c.JSON(http.StatusOK, debug)
-}
 
 func OptimizeHandler(c *gin.Context) {
 	var req OptimizeRequest
