@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"net/http"
 	"net/http/httputil"
 	"net/url"
 
@@ -15,9 +16,14 @@ func NewReverseProxy(target string) gin.HandlerFunc {
 		panic(err) // programmer error, target is a constant
 	}
 	rp := httputil.NewSingleHostReverseProxy(u)
+	rp.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("Access-Control-Allow-Origin") // ponytail: drop upstream's own CORS header, let our middleware set one
+		return nil
+	}
 
 	return func(c *gin.Context) {
 		c.Request.URL.Path = c.Param("path")
+		c.Request.Header.Set("X-Forwarded-Path", "/api/v1/tiles")
 		rp.ServeHTTP(c.Writer, c.Request)
 	}
 }
