@@ -115,8 +115,8 @@ func start_server() {
 		apiv1.POST("/tsp/optimize", tsp.OptimizeHandler)
 
 		// maptiler
-		apiv1.Any("/tiles/*path", proxy.NewReverseProxy("http://192.168.2.14:8003"))
-		apiv1.Any("/geocode/*path", proxy.NewReverseProxy("http://192.168.2.14:2322"))
+		apiv1.Any("/tiles/*path", middleware.RequireAuthUser, proxy.NewReverseProxy("http://192.168.2.14:8003"))
+		apiv1.Any("/geocode/*path", middleware.RequireAuthUser, proxy.NewReverseProxy("http://192.168.2.14:2322"))
 		// penneo integration
 
 		// following the flow from postman
