@@ -8,6 +8,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/api2"
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal/logger"
+	"github.com/MOPDev/mop-backend-api/internal/proxy"
 	"github.com/MOPDev/mop-backend-api/internal/tsp"
 	"github.com/MOPDev/mop-backend-api/middleware"
 	"github.com/gin-gonic/gin"
@@ -113,6 +114,9 @@ func start_server() {
 		apiv1.GET("/tsp/health", tsp.HealthHandler)
 		apiv1.POST("/tsp/optimize", tsp.OptimizeHandler)
 
+		// maptiler
+		apiv1.Any("/tiles/*path", proxy.NewReverseProxy("http://192.168.2.14:8003"))
+		apiv1.Any("/geocode/*path", proxy.NewReverseProxy("http://192.168.2.14:2322"))
 		// penneo integration
 
 		// following the flow from postman
