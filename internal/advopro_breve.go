@@ -65,9 +65,13 @@ func MergePDFs(pdfs [][]byte) ([]byte, error) {
 }
 
 // ExtractPDFPage extracts a single page from a PDF and returns the bytes.
-// pageNum is 1-indexed.
+// pageNum is 1-indexed. 0 means dont extract
 func ExtractPDFPage(pdfBytes []byte, pageNum int) ([]byte, error) {
 	// Write input bytes to a temp file
+	if pageNum == 0 {
+		return pdfBytes, nil
+	}
+
 	tmpIn, err := os.CreateTemp("", "input-*.pdf")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp input file: %w", err)
@@ -225,7 +229,7 @@ func resolveDocPath(winPlacering, winFilnavn string) string {
 }
 
 func Getbrev(visitId uint64) ([]byte, error) {
-	return getDocPage(visitId, nil, 1)
+	return getDocPage(visitId, nil, 0) // 0 meaning entire letter
 }
 
 func GetBesogsbrev(visitId uint64) ([]byte, error) {
