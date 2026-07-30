@@ -9,6 +9,7 @@ import (
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
+	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -117,14 +118,19 @@ func ChangeGroupId(c *gin.Context) {
 
 		// 2. UPDATE Visit
 		// We use a map with Updates to ensure GORM doesn't ignore "zero values" (like 0 or empty time)
-		return tx.Model(&visit).Updates(map[string]interface{}{
+		err := tx.Model(&visit).Updates(map[string]interface{}{
 			"group_id":   input.TargetGroupId,
 			"visit_date": newVisitDate,
 			"user_id":    newUserID,
 		}).Error
+		if err != nil {
+			logger.Errorf("updating visit with group: %s", err.Error())
+		}
+		return err
 	})
 
 	if err != nil {
+		logger.Errorf("ChangeGroupId error: %s", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
