@@ -174,7 +174,7 @@ type Visit struct {
 	// now we can do route optimisation
 	GroupId      *uint `json:"group_id"`
 	SegmentIndex *uint `json:"segment_index"`
-	Stopnr       *uint `json:"stop_nr"`
+	Stopnr       *uint `json:"stop_nr" gorm:"column:stop_nr"`
 
 	Cancelled *bool `json:"cancelled"` // for use in the soft delete for the UI
 

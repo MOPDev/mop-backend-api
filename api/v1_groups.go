@@ -15,6 +15,94 @@ import (
 	"gorm.io/gorm"
 )
 
+// nextVacantGroupId returns the next free group ID.
+// ponytail: caller must run this inside a transaction with row locking
+// (e.g. tx.Clauses(clause.Locking{Strength: "UPDATE"})) to avoid two
+// concurrent visits getting the same group ID. Add advisory locking or a
+// DB sequence if this path sees real concurrency.
+func nextVacantGroupId(tx *gorm.DB) (uint, error) {
+	if tx == nil {
+		tx = initializers.DB // ponytail: fallback for callers with no active transaction
+	}
+
+	var visitGroup models.Visit
+	err := tx.Where("group_id IS NOT NULL").
+		Order("group_id DESC").
+		First(&visitGroup).Error
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return 1, nil
+	case err != nil:
+		return 0, err
+	default:
+		return *visitGroup.GroupId + 1, nil
+	}
+}
+
+type AssignVisitsRequest struct {
+	VisitIDs []uint64 `json:"visitIds" binding:"required"`
+}
+
+func AssignVisitsToGroup(c *gin.Context) {
+	actingUser, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized or session expired"})
+		return
+	}
+
+	var req AssignVisitsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	err := initializers.DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&models.Visit{}).
+			Where("id IN ?", req.VisitIDs).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if int(count) != len(req.VisitIDs) {
+			return fmt.Errorf("one or more visit IDs not found")
+		}
+
+		nextId, err := nextVacantGroupId(tx)
+		if err != nil {
+			return err
+		}
+
+		for stop, visitId := range req.VisitIDs {
+			err := tx.Model(&models.Visit{}).
+				Where("id = ?", visitId).
+				Updates(map[string]any{
+					"group_id":      nextId,
+					"stop_nr":       uint(stop),
+					"segment_index": 0,
+					"status_id":     2,
+				}).Error
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		logger.Errorf("Assign visit to group: %s", err.Error())
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	// use actingUser for audit/logging if required
+	for _, visitId := range req.VisitIDs {
+		internal.UpdateVisitStatus(uint(visitId), uint(2), actingUser.ID)
+	}
+
+	c.Status(http.StatusOK)
+}
+
 func ChangeGroupId(c *gin.Context) {
 	// 1. Get current Admin user for logging purposes
 	// (Assuming getVerifyUser or your middleware provides the user object)
@@ -69,42 +157,22 @@ func ChangeGroupId(c *gin.Context) {
 				// Member found: Copy their visit date and konsulent (UserID)
 				newVisitDate = sibling.VisitDate
 				newUserID = sibling.UserID
+
 			} else if errors.Is(err, gorm.ErrRecordNotFound) {
 				// No members found: the group will contain the current values of the visit
 				// this means that this is the first visit of the group also meaning it should get a new group ID
 
-				// to find the next group id
-				var visitGroup models.Visit
-				var nextGroupId uint
-				result := tx.Where("group_id IS NOT NULL").Order("group_id DESC").First(&visitGroup)
-				if result.Error != nil {
-					nextGroupId = uint(1)
-				} else {
-					if visitGroup.GroupId == nil {
-						nextGroupId = 1
-					} else {
-						nextGroupId = *visitGroup.GroupId + 1
-					}
+				nextId, err := nextVacantGroupId(tx)
+				if err != nil {
+					logger.Errorf("nextvacantGroupId: %s", err.Error())
+					return err
 				}
-				// update the target group id to be something else
-				input.TargetGroupId = &nextGroupId
+				input.TargetGroupId = &nextId
 			} else {
 				return err
 			}
 		} else {
-			// if the value is nil then we should give it a new value
-			// lets try to find the highest value groupID and increment
-			var visit models.Visit
-			var NewGroupId *uint
-			tx.Order("group_id DESC").First(&visit)
-			if visit.GroupId != nil {
-				newId := *visit.GroupId + 1
-				NewGroupId = &newId
-			} else {
-				defaultId := uint(1)
-				NewGroupId = &defaultId // default value if nil
-			}
-			input.TargetGroupId = NewGroupId
+			// if the value is nil then re just remove it
 		}
 
 		// 1. LOG changes (before updating the record)
@@ -126,7 +194,16 @@ func ChangeGroupId(c *gin.Context) {
 		if err != nil {
 			logger.Errorf("updating visit with group: %s", err.Error())
 		}
-		return err
+
+		// only re-sequence stop_nr when the visit landed in a real group
+		if input.TargetGroupId != nil {
+			if err := fixRouteOrder(tx, *input.TargetGroupId, uint(visitID)); err != nil {
+				logger.Errorf("FixRouteOrder: %s", err.Error())
+				return err
+			}
+		}
+
+		return nil
 	})
 
 	if err != nil {

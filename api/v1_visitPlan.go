@@ -239,7 +239,7 @@ func PlannedVisits(c *gin.Context) {
 
 	var users []models.User
 	initializers.DB.
-		Where("id != ?", 1).
+		//Where("id != ?", 1). // if problems arise because of this, then find another way to get non assigned visits to show up on the routing page.
 		Preload("Visits", "status_id = ?", 2).
 		Preload("Visits.Debitors").
 		Find(&users)

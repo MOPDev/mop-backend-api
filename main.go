@@ -87,6 +87,7 @@ func start_server() {
 		apiv1.GET("/visits/besogsbrev/batch", middleware.RequireAuthUser, api.GetBatchHandler)
 		apiv1.GET("/visits/besogsbrev/check", middleware.RequireAuthUser, api.CheckBatchHandler)
 
+		apiv1.POST("/visits/assign", middleware.RequireAuthOfficeWorker, api.AssignVisitsToGroup)
 		apiv1.PATCH("/visits/:id/group", middleware.RequireAuthOfficeWorker, api.ChangeGroupId)                  // move a singe visit to a new groupId
 		apiv1.PATCH("/visits/group/:groupId/date", middleware.RequireAuthOfficeWorker, api.ChangeGroupDate)      // change the date of all visits with a groupID
 		apiv1.GET("/visits/group/:groupId", middleware.RequireAuthOfficeWorker, api.GetInGroup)                  // get all the visits in a group
@@ -110,6 +111,11 @@ func start_server() {
 		apiv1.GET("/penneo/events/:caseFileId", api.PenneoSSE)
 
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
+
+		// routing specific endpoints
+		apiv1.POST("/visits/group/:groupId/reorder", middleware.RequireAuthOfficeWorker, api.ReorderVisit) // body: {visitId, direction: "up"|"down"}, swaps stop_nr with neighbour, atomic
+		apiv1.POST("/visits/group/:groupId/split", middleware.RequireAuthOfficeWorker, api.SplitSegment)   // body: {visitId}, bumps segment_index for visit + all after it in stop_nr order
+		apiv1.POST("/visits/group/:groupId/join", middleware.RequireAuthOfficeWorker, api.JoinSegment)     // body: {visitId}, merges visit's segment into previous stop's segment_index
 
 		// valhalla
 		apiv1.GET("/tsp/health", tsp.HealthHandler)
