@@ -503,7 +503,17 @@ func CompleteVisitResponse(c *gin.Context) {
 		return
 	}
 
-	internal.UpdateVisitStatus(vr.VisitID, 4, user.ID)
+	vr.Completed = true
+	if err := initializers.DB.Save(&vr).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to complete"})
+		return
+	}
+
+	if err := internal.UpdateVisitStatus(vr.VisitID, 4, user.ID); err != nil &&
+		err.Error() != "the record is already in that status code" {
+		c.JSON(500, gin.H{"error": "Failed to update status"})
+		return
+	}
 	c.JSON(200, gin.H{"ok": true})
 }
 

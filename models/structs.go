@@ -182,7 +182,8 @@ type Visit struct {
 
 type VisitResponse struct {
 	gorm.Model
-	VisitID uint `json:"visit_id" binding:"required" gorm:"not null;unique"`
+	VisitID   uint `json:"visit_id" binding:"required" gorm:"not null;unique"`
+	Completed bool `json:"completed" gorm:"default:false"`
 
 	// actual data
 	ActDate     time.Time     `json:"actual_date" binding:"required"`
