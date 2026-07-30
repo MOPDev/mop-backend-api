@@ -111,6 +111,7 @@ func start_server() {
 
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
 
+		// valhalla
 		apiv1.GET("/tsp/health", tsp.HealthHandler)
 		apiv1.POST("/tsp/optimize", tsp.OptimizeHandler)
 

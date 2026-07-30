@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -26,18 +27,21 @@ func VisitCreation(c *gin.Context) {
 	}
 
 	type visitData struct {
-		Sagsnr     int64            `json:"sagsnr"`
-		Adresse    string           `json:"adresse"`
-		Postnr     string           `json:"postnr"`
-		Bynavn     string           `json:"bynavn"`
-		Noter      *string          `json:"noter"`
-		Debtors    []debitorData    `json:"debtors"`
-		VisitType  models.VisitType `json:"visit_type"`
-		KlientRef  string           `json:"klientRef"` // fixed
-		Klientnavn string           `json:"klientnavn"`
-		Klientnr   int64            `json:"klientnr"`
-		Sagvedr    string           `json:"sagvedr"`
-		FristDato  string           `json:"frist_dato"`
+		Sagsnr           int64            `json:"sagsnr"`
+		Adresse          string           `json:"adresse"`
+		Postnr           string           `json:"postnr"`
+		Bynavn           string           `json:"bynavn"`
+		Noter            *string          `json:"noter"`
+		Debtors          []debitorData    `json:"debtors"`
+		VisitType        models.VisitType `json:"visit_type"`
+		KlientRef        string           `json:"klientRef"` // fixed
+		Klientnavn       string           `json:"klientnavn"`
+		Klientnr         int64            `json:"klientnr"`
+		Sagvedr          string           `json:"sagvedr"`
+		FristDato        string           `json:"frist_dato"`
+		Latitude         string           `json:"latitude"`
+		Longitude        string           `json:"longitude"`
+		GeocodingAddress string           `json:"geocoding_address"`
 	}
 	var visitsData []visitData
 
@@ -62,75 +66,88 @@ func VisitCreation(c *gin.Context) {
 	}
 
 	var createdVisits []models.Visit
-	for _, visitData := range visitsData {
-		// create visit
-		var notes string
-		if visitData.Noter != nil {
-			notes = *visitData.Noter
-		}
-
-		extData := advoDataMap[uint(visitData.Sagsnr)]
-
-		deadlinestr := ""
-		if !extData.DeadlineDate.IsZero() {
-			deadlinestr = extData.DeadlineDate.Format("02/01/2006")
-		}
-
-		visit := models.Visit{
-			UserID:  1,
-			Address: visitData.Adresse + "," + visitData.Postnr + " " + visitData.Bynavn,
-			Notes:   notes,
-			Sagsnr:  uint(visitData.Sagsnr),
-			TypeID:  visitData.VisitType.ID,
-
-			// THE ADVOPRO DATA
-			AdvoproStatus:       uint(extData.Status),
-			AdvoproStatusText:   extData.StatusText,
-			AdvoproDeadlineDate: deadlinestr, // possibly change to time.Time if needed in the future
-			AdvoproKlient:       visitData.KlientRef,
-		}
-		result := initializers.DB.Create(&visit)
-		if result.Error != nil {
-			logger.Error(result.Error.Error())
-		}
-		createdVisits = append(createdVisits, visit)
-
-		for _, debtor := range visitData.Debtors {
-			debitorData := internal.FetchDebitorData(debtor.DebitorId)
-			if debitorData == nil {
-				log.Fatal("Debitor didnt exist in advopro")
-				return
+	// ponytail: whole create-visits+create-debitors block is one unit of work,
+	// any failure must undo all prior inserts in this request
+	err = initializers.DB.Transaction(func(tx *gorm.DB) error {
+		for _, visitData := range visitsData {
+			var notes string
+			if visitData.Noter != nil {
+				notes = *visitData.Noter
 			}
 
-			// create debitor in local database if not exists
-			// if exists then assign the visit
-			var existingDebitor models.Debitor
-			result := initializers.DB.Where("advopro_debitor_id = ?", debtor.DebitorId).First(&existingDebitor)
-			if result.Error != nil { //if debitor isnt there then create them
-				if result.Error == gorm.ErrRecordNotFound {
-					debitor := models.Debitor{
-						Name:             debitorData.Name,
-						Phone:            debitorData.Phone,
-						PhoneWork:        debitorData.PhoneWork,
-						Email:            debitorData.Email,
-						Gender:           debitorData.Gender,
-						Birthday:         debitorData.Birthday,
-						AdvoproDebitorId: int(debtor.DebitorId),
-						Risk:             debitorData.Risk,
-						SSN:              debitorData.SSN,
-						Iscompany:        debitorData.Iscompany,
+			extData := advoDataMap[uint(visitData.Sagsnr)]
+
+			deadlinestr := ""
+			if !extData.DeadlineDate.IsZero() {
+				deadlinestr = extData.DeadlineDate.Format("02/01/2006")
+			}
+
+			visit := models.Visit{
+				UserID:  1,
+				Address: visitData.Adresse + "," + visitData.Postnr + " " + visitData.Bynavn,
+				Notes:   notes,
+				Sagsnr:  uint(visitData.Sagsnr),
+				TypeID:  visitData.VisitType.ID,
+
+				Latitude:         visitData.Latitude,
+				Longitude:        visitData.Longitude,
+				GeocodingAddress: visitData.GeocodingAddress,
+
+				AdvoproStatus:       uint(extData.Status),
+				AdvoproStatusText:   extData.StatusText,
+				AdvoproDeadlineDate: deadlinestr,
+				AdvoproKlient:       visitData.KlientRef,
+			}
+			if err := tx.Create(&visit).Error; err != nil {
+				logger.Error(err.Error())
+				return err
+			}
+			createdVisits = append(createdVisits, visit)
+
+			for _, debtor := range visitData.Debtors {
+				debitorData := internal.FetchDebitorData(debtor.DebitorId)
+				if debitorData == nil {
+					logger.Errorf("debitor %d does not exist in advopro", debtor.DebitorId)
+					return fmt.Errorf("debitor %d does not exist in advopro", debtor.DebitorId)
+				}
+
+				var existingDebitor models.Debitor
+				result := tx.Where("advopro_debitor_id = ?", debtor.DebitorId).First(&existingDebitor)
+				if result.Error != nil {
+					if result.Error == gorm.ErrRecordNotFound {
+						newDebitor := models.Debitor{
+							Name:             debitorData.Name,
+							Phone:            debitorData.Phone,
+							PhoneWork:        debitorData.PhoneWork,
+							Email:            debitorData.Email,
+							Gender:           debitorData.Gender,
+							Birthday:         debitorData.Birthday,
+							AdvoproDebitorId: int(debtor.DebitorId),
+							Risk:             debitorData.Risk,
+							SSN:              debitorData.SSN,
+							Iscompany:        debitorData.Iscompany,
+						}
+						if err := tx.Create(&newDebitor).Error; err != nil {
+							return err
+						}
+						existingDebitor = newDebitor
+					} else {
+						return result.Error
 					}
-					initializers.DB.Create(&debitor)
-					existingDebitor = debitor
-				} else {
-					log.Fatal(result.Error)
-					return
+				}
+
+				if err := tx.Model(&visit).Association("Debitors").Append(&existingDebitor); err != nil {
+					return err
 				}
 			}
-
-			// associate debitor with visit
-			initializers.DB.Model(&visit).Association("Debitors").Append(&existingDebitor)
 		}
+		return nil
+	})
+
+	if err != nil {
+		logger.Error(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	logger.Infof("Created visits count: %d", len(createdVisits))
