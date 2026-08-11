@@ -306,6 +306,12 @@ func PatchVisit(c *gin.Context) {
 		return
 	}
 
+	if vt, ok := updates["visit_time"].(string); ok {
+		if iv, ok := visitIntervalRange(vt); ok {
+			updates["visit_interval"] = iv
+		}
+	}
+
 	if err := initializers.DB.Model(&existingVisit).Updates(updates).Error; err != nil {
 		logger.Errorf("Failed to update visit with ID %d: %s", visitID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

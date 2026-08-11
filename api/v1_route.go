@@ -178,9 +178,10 @@ func computeAndStoreRoute(userID uint, groupId uint, costing, mode string) ([]st
 			if err := internal.UpdateVisitValue(tx, v.ID, times[i], userID, "visit_time"); err != nil {
 				return err
 			}
+			interval, _ := visitIntervalRange(times[i])
 			if err := tx.Model(&models.Visit{}).
 				Where("id = ?", v.ID).
-				Update("visit_time", times[i]).Error; err != nil {
+				Updates(map[string]interface{}{"visit_time": times[i], "visit_interval": interval}).Error; err != nil {
 				return err
 			}
 		}
