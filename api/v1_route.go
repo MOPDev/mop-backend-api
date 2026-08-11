@@ -172,13 +172,15 @@ func computeAndStoreRoute(userID uint, groupId uint, costing, mode string) ([]st
 	geometryJSON, _ := json.Marshal(result.Geometry)
 	err = initializers.DB.Transaction(func(tx *gorm.DB) error {
 		for i, v := range visits {
-			if v.VisitTime == times[i] {
+			interval, _ := visitIntervalRange(times[i])
+			if v.VisitTime == times[i] && v.VisitInterval == interval {
 				continue
 			}
-			if err := internal.UpdateVisitValue(tx, v.ID, times[i], userID, "visit_time"); err != nil {
-				return err
+			if v.VisitTime != times[i] {
+				if err := internal.UpdateVisitValue(tx, v.ID, times[i], userID, "visit_time"); err != nil {
+					return err
+				}
 			}
-			interval, _ := visitIntervalRange(times[i])
 			if err := tx.Model(&models.Visit{}).
 				Where("id = ?", v.ID).
 				Updates(map[string]interface{}{"visit_time": times[i], "visit_interval": interval}).Error; err != nil {

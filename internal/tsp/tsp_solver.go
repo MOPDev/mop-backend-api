@@ -8,6 +8,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -297,7 +299,7 @@ func calculateTourDistance(order []int, matrix [][]float64) float64 {
 
 const (
 	valhallaBaseURL = "http://192.168.2.14:8002" // Your LAN IP where Valhalla runs
-	dupeEps         = 1e-5                        // ~1m at most latitudes
+	dupeEps         = 1e-5                       // ~1m at most latitudes
 )
 
 // coLocated reports whether two locations are within dupeEps of each other.
@@ -412,7 +414,7 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 					matrix[fromIdx][toIdx] = cell.Time
 				} else {
 					// UNREACHABLE - use a very large number
-					matrix[fromIdx][toIdx] = 9999999.0
+					matrix[fromIdx][toIdx] = cell.Distance * -1
 					unreachable++
 				}
 			} else {
@@ -420,43 +422,43 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 					matrix[fromIdx][toIdx] = cell.Distance
 				} else {
 					// UNREACHABLE - use a very large number
-					matrix[fromIdx][toIdx] = 9999999.0
+					matrix[fromIdx][toIdx] = cell.Distance * -1
 					unreachable++
 				}
 			}
 		}
 	}
 
-	// ADD THIS DEBUG LOGGING
-	fmt.Printf("=== MATRIX DEBUG ===\n")
-	// Print column headers
-	fmt.Printf("      ")
-	for j := 0; j < len(locations); j++ {
-		fmt.Printf(" %6d", j)
-	}
-	fmt.Printf("\n")
-
-	// Print rows with row headers
-	for i := 0; i < len(locations); i++ {
-		fmt.Printf(" %4d ", i)
+	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		// ADD THIS DEBUG LOGGING
+		fmt.Printf("=== MATRIX DEBUG ===\n")
+		// Print column headers
+		fmt.Printf("      ")
 		for j := 0; j < len(locations); j++ {
-			val := matrix[i][j]
-			if matrix[i][j] > 9999990.0 {
-				val = -1
-			}
-			// Truncate large numbers for display
-			if val > 999999 {
-				fmt.Printf(" %6s", ">999k")
-			} else {
-				fmt.Printf(" %6.0f", val)
-			}
+			fmt.Printf(" %6d", j)
 		}
 		fmt.Printf("\n")
-	}
-	fmt.Printf("===================\n")
 
-	if unreachable > len(locations) {
-		fmt.Printf("[WARNING] %d location pairs are unreachable\n", unreachable)
+		// Print rows with row headers
+		for i := 0; i < len(locations); i++ {
+			fmt.Printf(" %4d ", i)
+			for j := 0; j < len(locations); j++ {
+				val := matrix[i][j]
+				// Truncate large numbers for display
+				if val < -999999 {
+					fmt.Printf(" %6s", "<-999k")
+				} else {
+					fmt.Printf(" %6.0f", val)
+				}
+			}
+			fmt.Printf("\n")
+		}
+		fmt.Printf("===================\n")
+
+		if unreachable > len(locations) {
+			fmt.Printf("[WARNING] %d location pairs are unreachable\n", unreachable)
+		}
+
 	}
 
 	return matrix, nil
@@ -465,7 +467,7 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 func getRouteFromValhalla(waypoints []Waypoint, costing, mode string) (*ValhallaRouteResponse, error) {
 	locations := make([]Location, len(waypoints))
 	for i, w := range waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 50}
+		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 100} // perhaps limit to 50
 	}
 
 	req := ValhallaRouteRequest{
@@ -570,7 +572,7 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 
 	locations := make([]Location, len(waypoints))
 	for i, w := range waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon}
+		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 50} // ponytail: match route request's snap radius, unsnapped points return bogus 0-cost edges
 	}
 
 	matrix, err := getMatrixFromValhalla(locations, costing, mode)
