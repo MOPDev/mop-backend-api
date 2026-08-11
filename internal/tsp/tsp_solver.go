@@ -295,7 +295,49 @@ func calculateTourDistance(order []int, matrix [][]float64) float64 {
 
 // ========== Valhalla Client ==========
 
-const valhallaBaseURL = "http://192.168.2.14:8002" // Your LAN IP where Valhalla runs
+const (
+	valhallaBaseURL = "http://192.168.2.14:8002" // Your LAN IP where Valhalla runs
+	dupeEps         = 1e-5                        // ~1m at most latitudes
+)
+
+// coLocated reports whether two locations are within dupeEps of each other.
+func coLocated(a, b Location) bool {
+	return math.Abs(a.Lat-b.Lat) < dupeEps && math.Abs(a.Lon-b.Lon) < dupeEps
+}
+
+// collapseConsecutive removes waypoints that sit on top of their predecessor,
+// returning the unique list plus, for each original waypoint, the index of
+// its representative in the unique list.
+func collapseConsecutive(waypoints []Waypoint) (unique []Waypoint, reps []int) {
+	reps = make([]int, len(waypoints))
+	for i, w := range waypoints {
+		if len(unique) > 0 && coLocated(Location{Lat: unique[len(unique)-1].Lat, Lon: unique[len(unique)-1].Lon}, Location{Lat: w.Lat, Lon: w.Lon}) {
+			reps[i] = len(unique) - 1
+			continue
+		}
+		reps[i] = len(unique)
+		unique = append(unique, w)
+	}
+	return unique, reps
+}
+
+// expandLegs maps legs of the collapsed route back to one leg per original
+// waypoint pair. Pairs that share a representative are co-located and get a
+// zero-length leg (empty geometry, 0 travel time), while every stop still
+// receives its own service time in the caller's schedule.
+func expandLegs(reps []int, geometry []string, legTimes []float64) ([]string, []float64) {
+	outG := make([]string, len(reps)-1)
+	outT := make([]float64, len(reps)-1)
+	for i := 0; i < len(reps)-1; i++ {
+		if reps[i] == reps[i+1] {
+			continue // co-located pair: zero leg
+		}
+		u := reps[i] // collapsed leg u runs between unique[u] and unique[u+1]
+		outG[i] = geometry[u]
+		outT[i] = legTimes[u]
+	}
+	return outG, outT
+}
 
 func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]float64, error) {
 	req := ValhallaMatrixRequest{
@@ -356,6 +398,12 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 			toIdx := cell.ToIndex
 
 			if fromIdx >= n || toIdx >= n {
+				continue
+			}
+
+			// co-located pair: zero cost, not unreachable
+			if coLocated(locations[fromIdx], locations[toIdx]) {
+				matrix[fromIdx][toIdx] = 0
 				continue
 			}
 
@@ -548,22 +596,37 @@ type RouteResult struct {
 }
 
 // RouteGeometry fetches the road geometry for the waypoints in the given order.
+// Consecutive waypoints on top of each other are collapsed before the Valhalla
+// call and expanded back into zero-length legs afterwards.
 func RouteGeometry(waypoints []Waypoint, costing, mode string) (*RouteResult, error) {
-	routeResp, err := getRouteFromValhalla(waypoints, costing, mode)
+	unique, reps := collapseConsecutive(waypoints)
+
+	// all waypoints on top of each other: every leg is zero-length
+	if len(unique) < 2 {
+		outG, outT := expandLegs(reps, nil, nil)
+		return &RouteResult{Geometry: outG, LegTimes: outT}, nil
+	}
+
+	routeResp, err := getRouteFromValhalla(unique, costing, mode)
 	if err != nil {
 		return nil, err
 	}
 
-	result := &RouteResult{
-		Geometry: make([]string, 0, len(routeResp.Trip.Legs)),
-		LegTimes: make([]float64, 0, len(routeResp.Trip.Legs)),
-	}
+	geometry := make([]string, 0, len(routeResp.Trip.Legs))
+	legTimes := make([]float64, 0, len(routeResp.Trip.Legs))
 	for _, leg := range routeResp.Trip.Legs {
-		result.Geometry = append(result.Geometry, leg.Shape)
-		result.LegTimes = append(result.LegTimes, leg.Summary.Time)
+		geometry = append(geometry, leg.Shape)
+		legTimes = append(legTimes, leg.Summary.Time)
 	}
-	result.Distance = routeResp.Trip.Summary.Distance
-	result.Time = routeResp.Trip.Summary.Time
+
+	outG, outT := expandLegs(reps, geometry, legTimes)
+
+	result := &RouteResult{
+		Geometry: outG,
+		LegTimes: outT,
+		Distance: routeResp.Trip.Summary.Distance,
+		Time:     routeResp.Trip.Summary.Time,
+	}
 	return result, nil
 }
 

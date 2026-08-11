@@ -179,3 +179,63 @@ func TestReverseMatrixAndOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestCollapseConsecutiveAndExpand(t *testing.T) {
+	wp := func(lat, lon float64) Waypoint { return Waypoint{Lat: lat, Lon: lon} }
+
+	// two stops on top of each other, followed by a third further away
+	waypoints := []Waypoint{wp(55.0, 12.0), wp(55.0, 12.0), wp(56.0, 13.0)}
+
+	unique, reps := collapseConsecutive(waypoints)
+	if len(unique) != 2 {
+		t.Fatalf("want 2 unique waypoints, got %d", len(unique))
+	}
+	wantReps := []int{0, 0, 1}
+	for i := range wantReps {
+		if reps[i] != wantReps[i] {
+			t.Fatalf("reps[%d]: want %d got %d", i, wantReps[i], reps[i])
+		}
+	}
+
+	// collapsed route [A, B] gives one leg with real geometry + time
+	geometry, legTimes := expandLegs(reps, []string{"g_AB"}, []float64{300})
+	if len(geometry) != 2 || len(legTimes) != 2 {
+		t.Fatalf("want 2 expanded legs, got %d/%d", len(geometry), len(legTimes))
+	}
+	// leg 0: A->A (co-located) -> empty/0, leg 1: A->B -> real
+	if geometry[0] != "" || legTimes[0] != 0 {
+		t.Fatalf("leg 0 must be zero, got %q / %.0f", geometry[0], legTimes[0])
+	}
+	if geometry[1] != "g_AB" || legTimes[1] != 300 {
+		t.Fatalf("leg 1 must be real, got %q / %.0f", geometry[1], legTimes[1])
+	}
+}
+
+func TestCollapseConsecutiveAllDuplicates(t *testing.T) {
+	wp := func(lat, lon float64) Waypoint { return Waypoint{Lat: lat, Lon: lon} }
+	waypoints := []Waypoint{wp(55.0, 12.0), wp(55.0, 12.0), wp(55.0, 12.0)}
+
+	unique, reps := collapseConsecutive(waypoints)
+	if len(unique) != 1 {
+		t.Fatalf("want 1 unique waypoint, got %d", len(unique))
+	}
+	geometry, legTimes := expandLegs(reps, nil, nil)
+	for i := range geometry {
+		if geometry[i] != "" || legTimes[i] != 0 {
+			t.Fatalf("leg %d must be zero, got %q / %.0f", i, geometry[i], legTimes[i])
+		}
+	}
+}
+
+func TestCoLocatedMatrixNotUnreachable(t *testing.T) {
+	// replicate the matrix-cell decision: co-located pair is 0, not 9999999
+	a := Location{Lat: 55.0, Lon: 12.0}
+	b := Location{Lat: 55.0, Lon: 12.0}
+	if !coLocated(a, b) {
+		t.Fatal("coLocated should be true for identical locations")
+	}
+	c := Location{Lat: 56.0, Lon: 13.0}
+	if coLocated(a, c) {
+		t.Fatal("coLocated should be false for distant locations")
+	}
+}
