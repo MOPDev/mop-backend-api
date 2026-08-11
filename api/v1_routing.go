@@ -402,9 +402,13 @@ type groupSegment struct {
 }
 
 // groupSegments splits visits (sorted by stop_nr) into contiguous segments by
-// segment_index. A segment whose last stop differs from the next stop's
-// segment_index ends at a boundary; the final segment is marked isLast.
-// A size-1 segment is a locked stop (forced end point), never optimized.
+// segment_index. Each non-last segment also carries the first stop of the
+// next segment appended as its fixed end anchor — that stop is solved twice
+// (once as this segment's end, once as the next segment's start) but only
+// the next segment's copy is kept in the final order, so it is not
+// duplicated in the output. The final segment carries no such anchor and is
+// marked isLast. A size-1 segment is a locked stop (forced end point),
+// never optimized.
 func groupSegments(visits []models.Visit) []groupSegment {
 	sorted := append([]models.Visit(nil), visits...)
 	sort.Slice(sorted, func(i, j int) bool {
@@ -420,6 +424,10 @@ func groupSegments(visits []models.Visit) []groupSegment {
 	}
 	for i := range segs {
 		segs[i].isLast = i == len(segs)-1
+		if !segs[i].isLast {
+			nextFirst := segs[i+1].visits[0]
+			segs[i].visits = append(segs[i].visits, nextFirst)
+		}
 	}
 	return segs
 }
@@ -491,10 +499,8 @@ func OptimizeGroup(c *gin.Context) {
 			})
 		}
 
-		// the first stop is anchored. The end is anchored on every segment but
-		// the last: the group's final stop is only fixed when it sits alone in
-		// its own segment (a size-1 segment, which is skipped above).
-		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, !s.isLast)
+		// the first stop is anchored.
+		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, false) //!s.isLast
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -504,7 +510,11 @@ func OptimizeGroup(c *gin.Context) {
 		for _, v := range s.visits {
 			byID[strconv.FormatUint(uint64(v.ID), 10)] = v
 		}
-		for _, w := range solved {
+		end := len(solved)
+		if !s.isLast {
+			end-- // drop the borrowed next-segment anchor, next segment emits it
+		}
+		for _, w := range solved[:end] {
 			orderedVisits = append(orderedVisits, byID[w.ID])
 		}
 	}
