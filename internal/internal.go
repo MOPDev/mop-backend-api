@@ -154,6 +154,8 @@ func UpdateVisitValue(db *gorm.DB, visitID uint, newVal string, userID uint, fie
 		oldVal = fmt.Sprintf("%v", visit.UserID)
 	case "visit_date":
 		oldVal = visit.VisitDate.Format(time.RFC3339)
+	case "visit_time":
+		oldVal = visit.VisitTime
 	}
 
 	log := models.VisitLog{

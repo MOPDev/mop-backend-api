@@ -41,6 +41,7 @@ type OptimizeResponse struct {
 	Time      float64    `json:"time"`
 	Geometry  []string   `json:"geometry"` // Encoded polyline string
 	Optimal   bool       `json:"optimal"`
+	Overrun   bool       `json:"overrun"`
 }
 
 type ValhallaMatrixRequest struct {
@@ -78,7 +79,10 @@ type ValhallaRouteResponse struct {
 			Distance float64 `json:"length"`
 		} `json:"summary"`
 		Legs []struct {
-			Shape string `json:"shape"`
+			Shape   string `json:"shape"`
+			Summary struct {
+				Time float64 `json:"time"`
+			} `json:"summary"`
 		} `json:"legs"`
 	} `json:"trip"`
 }
@@ -403,7 +407,7 @@ func getMatrixFromValhalla(locations []Location, costing, mode string) ([][]floa
 	}
 	fmt.Printf("===================\n")
 
-	if unreachable > 0 {
+	if unreachable > len(locations) {
 		fmt.Printf("[WARNING] %d location pairs are unreachable\n", unreachable)
 	}
 
@@ -535,19 +539,32 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 	return ordered, nil
 }
 
+// RouteResult is the geometry + travel data for an ordered route.
+type RouteResult struct {
+	Geometry []string  // one encoded polyline per leg
+	LegTimes []float64 // travel time per leg, seconds
+	Distance float64
+	Time     float64
+}
+
 // RouteGeometry fetches the road geometry for the waypoints in the given order.
-// Returns one encoded polyline per leg, plus total distance and travel time.
-func RouteGeometry(waypoints []Waypoint, costing, mode string) ([]string, float64, float64, error) {
+func RouteGeometry(waypoints []Waypoint, costing, mode string) (*RouteResult, error) {
 	routeResp, err := getRouteFromValhalla(waypoints, costing, mode)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
 
-	geometry := make([]string, 0, len(routeResp.Trip.Legs))
-	for _, leg := range routeResp.Trip.Legs {
-		geometry = append(geometry, leg.Shape)
+	result := &RouteResult{
+		Geometry: make([]string, 0, len(routeResp.Trip.Legs)),
+		LegTimes: make([]float64, 0, len(routeResp.Trip.Legs)),
 	}
-	return geometry, routeResp.Trip.Summary.Distance, routeResp.Trip.Summary.Time, nil
+	for _, leg := range routeResp.Trip.Legs {
+		result.Geometry = append(result.Geometry, leg.Shape)
+		result.LegTimes = append(result.LegTimes, leg.Summary.Time)
+	}
+	result.Distance = routeResp.Trip.Summary.Distance
+	result.Time = routeResp.Trip.Summary.Time
+	return result, nil
 }
 
 // solveOrder maps the fixed start/end flags onto the solver.
@@ -615,7 +632,7 @@ func OptimizeHandler(c *gin.Context) {
 		return
 	}
 
-	geometry, distance, travelTime, err := RouteGeometry(ordered, req.Costing, req.Mode)
+	result, err := RouteGeometry(ordered, req.Costing, req.Mode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -623,9 +640,9 @@ func OptimizeHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, OptimizeResponse{
 		Waypoints: ordered,
-		Distance:  distance,
-		Time:      travelTime,
-		Geometry:  geometry,
+		Distance:  result.Distance,
+		Time:      result.Time,
+		Geometry:  result.Geometry,
 		Optimal:   len(req.Waypoints) <= 25,
 	})
 }

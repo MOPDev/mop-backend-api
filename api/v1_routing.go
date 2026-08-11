@@ -161,7 +161,10 @@ func ReorderVisit(c *gin.Context) {
 		if err := tx.Where("group_id = ?", groupId).Find(&all).Error; err != nil {
 			return err
 		}
-		return assertSegmentsValid(all)
+		if err := assertSegmentsValid(all); err != nil {
+			return err
+		}
+		return clearGroupRoute(tx, uint(groupId))
 	})
 
 	if err != nil {
@@ -254,7 +257,10 @@ func SplitSegment(c *gin.Context) {
 		if err := tx.Where("group_id = ?", groupId).Find(&all).Error; err != nil {
 			return err
 		}
-		return assertSegmentsValid(all)
+		if err := assertSegmentsValid(all); err != nil {
+			return err
+		}
+		return clearGroupRoute(tx, uint(groupId))
 	})
 
 	if err != nil {
@@ -350,7 +356,10 @@ func JoinSegment(c *gin.Context) {
 		if err := tx.Where("group_id = ?", groupId).Find(&all).Error; err != nil {
 			return err
 		}
-		return assertSegmentsValid(all)
+		if err := assertSegmentsValid(all); err != nil {
+			return err
+		}
+		return clearGroupRoute(tx, uint(groupId))
 	})
 
 	if err != nil {
@@ -546,7 +555,8 @@ func OptimizeGroup(c *gin.Context) {
 		return
 	}
 
-	// route geometry over the full optimized order
+	// route geometry over the full optimized order, plus arrival times and
+	// stored route (visit_time is persisted and logged per visit)
 	waypoints := make([]tsp.Waypoint, 0, len(orderedVisits))
 	for i, v := range orderedVisits {
 		lat, _ := strconv.ParseFloat(v.Latitude, 64)
@@ -558,7 +568,7 @@ func OptimizeGroup(c *gin.Context) {
 			Lon:   lon,
 		})
 	}
-	geometry, distance, travelTime, err := tsp.RouteGeometry(waypoints, costing, mode)
+	geometry, distance, travelTime, overrun, err := computeAndStoreRoute(user.ID, uint(groupId), costing, mode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -576,5 +586,6 @@ func OptimizeGroup(c *gin.Context) {
 		Time:      travelTime,
 		Geometry:  geometry,
 		Optimal:   len(waypoints) <= 25,
+		Overrun:   overrun,
 	})
 }

@@ -370,3 +370,24 @@ type ActivityLog struct {
 	PrevVal      datatypes.JSON `json:"prev_val"`
 	CurrentVal   datatypes.JSON `json:"current_val"`
 }
+
+// RouteSetting holds the planning defaults used when arrival times are
+// computed for a route. A single row is kept.
+// Anchor is "start" (first stop at StartTime) or "end" (last stop at EndTime).
+type RouteSetting struct {
+	gorm.Model
+	StartTime      string `json:"start_time" gorm:"default:13:00"`
+	ServiceMinutes uint   `json:"service_minutes" gorm:"default:15"`
+	EndTime        string `json:"end_time" gorm:"default:20:00"`
+	Anchor         string `json:"anchor" gorm:"default:start"`
+}
+
+// VisitRoute stores the last computed route for a group, so the frontend can
+// draw the optimized route without re-optimizing. Geometry is a JSON array of
+// encoded polylines, one per leg in stop_nr order.
+type VisitRoute struct {
+	gorm.Model
+	GroupID  uint   `json:"group_id" gorm:"uniqueIndex"`
+	Geometry string `json:"geometry"`
+	Overrun  bool   `json:"overrun"`
+}

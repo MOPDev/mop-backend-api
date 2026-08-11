@@ -203,6 +203,18 @@ func ChangeGroupId(c *gin.Context) {
 			}
 		}
 
+		// the stored route of any affected group is stale now
+		if visit.GroupId != nil && *visit.GroupId > 0 {
+			if err := clearGroupRoute(tx, *visit.GroupId); err != nil {
+				return err
+			}
+		}
+		if input.TargetGroupId != nil {
+			if err := clearGroupRoute(tx, *input.TargetGroupId); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 

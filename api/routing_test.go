@@ -67,6 +67,76 @@ func TestAssertSegmentsValid(t *testing.T) {
 
 func uptr(v uint) *uint { return &v }
 
+func TestComputeArrivalTimes(t *testing.T) {
+	cases := []struct {
+		name     string
+		start    string
+		service  uint
+		end      string
+		anchor   string
+		legTimes []float64
+		want     []string
+		overrun  bool
+	}{
+		{
+			name:     "forward from start",
+			start:    "13:00", service: 15, end: "20:00", anchor: "start",
+			legTimes: []float64{600}, // 10 min travel
+			want:     []string{"13:00", "13:25"},
+		},
+		{
+			name:     "forward keeps start, overrun when route too long",
+			start:    "13:00", service: 60, end: "14:00", anchor: "start",
+			legTimes: []float64{3600}, // 1h travel
+			want:     []string{"13:00", "15:00"},
+			overrun:  true,
+		},
+		{
+			name:     "backward from end",
+			start:    "13:00", service: 15, end: "20:00", anchor: "end",
+			legTimes: []float64{600},
+			// last lands on 20:00, prev = 20:00 - 15min service - 10min travel
+			want: []string{"19:35", "20:00"},
+		},
+		{
+			name:     "backward overrun when start would be before start_time",
+			start:    "19:00", service: 60, end: "20:00", anchor: "end",
+			legTimes: []float64{3600}, // 1h travel -> begin at 18:00
+			want:     []string{"18:00", "20:00"},
+			overrun:  true,
+		},
+		{
+			name:     "backward without end time falls back to forward",
+			start:    "13:00", service: 15, end: "", anchor: "end",
+			legTimes: []float64{600},
+			want:     []string{"13:00", "13:25"},
+		},
+		{
+			name:     "no travel between stops",
+			start:    "13:00", service: 15, end: "", anchor: "start",
+			legTimes: []float64{0},
+			want:     []string{"13:00", "13:15"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, overrun := computeArrivalTimes(tc.start, tc.service, tc.end, tc.anchor, tc.legTimes)
+			if overrun != tc.overrun {
+				t.Fatalf("overrun: want %v got %v", tc.overrun, overrun)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len: want %v got %v", tc.want, got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("times: want %v got %v", tc.want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestGroupSegments(t *testing.T) {
 	visits := []models.Visit{
 		seg(1, 1, 0), seg(2, 2, 0), seg(4, 3, 0),

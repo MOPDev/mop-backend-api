@@ -113,10 +113,16 @@ func start_server() {
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
 
 		// routing specific endpoints
-		apiv1.POST("/visits/group/:groupId/reorder", middleware.RequireAuthOfficeWorker, api.ReorderVisit) // body: {visitId, direction: "up"|"down"}, swaps stop_nr with neighbour, atomic
-		apiv1.POST("/visits/group/:groupId/split", middleware.RequireAuthOfficeWorker, api.SplitSegment)   // body: {visitId}, bumps segment_index for visit + all after it in stop_nr order
-		apiv1.POST("/visits/group/:groupId/join", middleware.RequireAuthOfficeWorker, api.JoinSegment)     // body: {visitId}, merges visit's segment into previous stop's segment_index
-		apiv1.POST("/visits/group/:groupId/optimize", middleware.RequireAuthOfficeWorker, api.OptimizeGroup) // body: {costing, mode}, per-segment TSP, persists stop_nr, returns route geometry
+		apiv1.POST("/visits/group/:groupId/reorder", middleware.RequireAuthOfficeWorker, api.ReorderVisit)      // body: {visitId, direction: "up"|"down"}, swaps stop_nr with neighbour, atomic
+		apiv1.POST("/visits/group/:groupId/split", middleware.RequireAuthOfficeWorker, api.SplitSegment)        // body: {visitId}, bumps segment_index for visit + all after it in stop_nr order
+		apiv1.POST("/visits/group/:groupId/join", middleware.RequireAuthOfficeWorker, api.JoinSegment)          // body: {visitId}, merges visit's segment into previous stop's segment_index
+		apiv1.POST("/visits/group/:groupId/optimize", middleware.RequireAuthOfficeWorker, api.OptimizeGroup)    // body: {costing, mode}, per-segment TSP, persists stop_nr, returns route geometry
+		apiv1.GET("/visits/group/:groupId/route", middleware.RequireAuthOfficeWorker, api.GetGroupRoute)        // stored optimized route (polylines) for a group
+		apiv1.POST("/visits/group/:groupId/route", middleware.RequireAuthOfficeWorker, api.RecomputeGroupRoute) // recompute geometry + arrival times for current order
+
+		// route planning settings
+		apiv1.GET("/route-settings", middleware.RequireAuthOfficeWorker, api.GetRouteSettings)
+		apiv1.PATCH("/route-settings", middleware.RequireAuthOfficeWorker, api.PatchRouteSettings)
 
 		// valhalla
 		apiv1.GET("/tsp/health", tsp.HealthHandler)

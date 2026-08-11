@@ -96,6 +96,8 @@ func migrateTables() {
 		&models.VisitType{},
 		&models.ActivityLog{},
 		&models.VisitLog{},
+		&models.RouteSetting{},
+		&models.VisitRoute{},
 	)
 	if err != nil {
 		logger.Error(err.Error())
@@ -110,6 +112,18 @@ func migrateTables() {
 		if result.Error != nil {
 			logger.Error(result.Error.Error())
 		}
+	}
+
+	// seed a single route settings row with the planning defaults
+	var settingCount int64
+	initializers.DB.Model(&models.RouteSetting{}).Count(&settingCount)
+	if settingCount == 0 {
+		initializers.DB.Create(&models.RouteSetting{
+			StartTime:      "13:00",
+			ServiceMinutes: 15,
+			EndTime:        "20:00",
+			Anchor:         "start",
+		})
 	}
 
 	logger.Info("Migration went well")
@@ -254,6 +268,8 @@ func fullreset() {
 		&models.AuthAttempt{},
 		&models.VisitType{},
 		&models.ActivityLog{},
+		&models.RouteSetting{},
+		&models.VisitRoute{},
 	)
 
 	for _, s := range statuses {
