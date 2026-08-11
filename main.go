@@ -116,6 +116,7 @@ func start_server() {
 		apiv1.POST("/visits/group/:groupId/reorder", middleware.RequireAuthOfficeWorker, api.ReorderVisit) // body: {visitId, direction: "up"|"down"}, swaps stop_nr with neighbour, atomic
 		apiv1.POST("/visits/group/:groupId/split", middleware.RequireAuthOfficeWorker, api.SplitSegment)   // body: {visitId}, bumps segment_index for visit + all after it in stop_nr order
 		apiv1.POST("/visits/group/:groupId/join", middleware.RequireAuthOfficeWorker, api.JoinSegment)     // body: {visitId}, merges visit's segment into previous stop's segment_index
+		apiv1.POST("/visits/group/:groupId/optimize", middleware.RequireAuthOfficeWorker, api.OptimizeGroup) // body: {costing, mode}, per-segment TSP, persists stop_nr, returns route geometry
 
 		// valhalla
 		apiv1.GET("/tsp/health", tsp.HealthHandler)

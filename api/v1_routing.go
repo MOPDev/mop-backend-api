@@ -10,6 +10,7 @@ import (
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
 	"github.com/MOPDev/mop-backend-api/internal/logger"
+	"github.com/MOPDev/mop-backend-api/internal/tsp"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -385,3 +386,195 @@ func assertSegmentsValid(visits []models.Visit) error {
 	apiv1.POST("/visits/group/:groupId/split",  api.SplitSegment)
 	apiv1.POST("/visits/group/:groupId/join", api.JoinSegment)
 */
+
+type groupSegment struct {
+	visits []models.Visit
+	isLast bool
+}
+
+// groupSegments splits visits (sorted by stop_nr) into contiguous segments by
+// segment_index. A segment whose last stop differs from the next stop's
+// segment_index ends at a boundary; the final segment is marked isLast.
+// A size-1 segment is a locked stop (forced end point), never optimized.
+func groupSegments(visits []models.Visit) []groupSegment {
+	sorted := append([]models.Visit(nil), visits...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return derefUint(sorted[i].Stopnr) < derefUint(sorted[j].Stopnr)
+	})
+
+	var segs []groupSegment
+	for i, v := range sorted {
+		if i == 0 || derefUint(sorted[i-1].SegmentIndex) != derefUint(v.SegmentIndex) {
+			segs = append(segs, groupSegment{})
+		}
+		segs[len(segs)-1].visits = append(segs[len(segs)-1].visits, v)
+	}
+	for i := range segs {
+		segs[i].isLast = i == len(segs)-1
+	}
+	return segs
+}
+
+// OptimizeGroup runs one TSP per segment inside a group, persists the new
+// stop_nr order, and returns the optimized route with road geometry.
+// body: {"costing": "auto", "mode": "distance"} (both optional, defaults shown)
+func OptimizeGroup(c *gin.Context) {
+	user, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized"})
+		return
+	}
+
+	groupId, err := strconv.ParseUint(c.Param("groupId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Group ID"})
+		return
+	}
+
+	var input struct {
+		Costing string `json:"costing"`
+		Mode    string `json:"mode"`
+	}
+	_ = c.ShouldBindJSON(&input)
+	costing := input.Costing
+	if costing == "" {
+		costing = "auto"
+	}
+	mode := input.Mode
+	if mode == "" {
+		mode = "distance"
+	}
+
+	var visits []models.Visit
+	if err := initializers.DB.Where("group_id = ?", groupId).
+		Order("stop_nr ASC").Find(&visits).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if len(visits) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least 2 visits to optimize"})
+		return
+	}
+
+	segs := groupSegments(visits)
+
+	// solve each segment, then concatenate the ordered visits
+	orderedVisits := make([]models.Visit, 0, len(visits))
+	for _, s := range segs {
+		if len(s.visits) < 2 {
+			orderedVisits = append(orderedVisits, s.visits...)
+			continue
+		}
+
+		waypoints := make([]tsp.Waypoint, 0, len(s.visits))
+		for _, v := range s.visits {
+			lat, latErr := strconv.ParseFloat(v.Latitude, 64)
+			lon, lonErr := strconv.ParseFloat(v.Longitude, 64)
+			if latErr != nil || lonErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("visit %d has invalid coordinates", v.ID)})
+				return
+			}
+			waypoints = append(waypoints, tsp.Waypoint{
+				ID:    strconv.FormatUint(uint64(v.ID), 10),
+				Label: fmt.Sprintf("%d", derefUint(v.Stopnr)),
+				Lat:   lat,
+				Lon:   lon,
+			})
+		}
+
+		// the first stop is anchored. The end is anchored on every segment but
+		// the last: the group's final stop is only fixed when it sits alone in
+		// its own segment (a size-1 segment, which is skipped above).
+		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, !s.isLast)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		byID := make(map[string]models.Visit, len(s.visits))
+		for _, v := range s.visits {
+			byID[strconv.FormatUint(uint64(v.ID), 10)] = v
+		}
+		for _, w := range solved {
+			orderedVisits = append(orderedVisits, byID[w.ID])
+		}
+	}
+
+	// persist the new stop_nr (0-based, dense) in a transaction
+	err = initializers.DB.Transaction(func(tx *gorm.DB) error {
+		// only visits whose position actually changed
+		changed := make([]int, 0, len(orderedVisits))
+		for i := range orderedVisits {
+			if derefUint(orderedVisits[i].Stopnr) != uint(i) {
+				changed = append(changed, i)
+			}
+		}
+
+		// park them out of the way first so the unique (group_id, stop_nr)
+		// index cannot collide mid-swap, then write the final values
+		maxStop := uint(0)
+		for i := range orderedVisits {
+			if derefUint(orderedVisits[i].Stopnr) > maxStop {
+				maxStop = derefUint(orderedVisits[i].Stopnr)
+			}
+		}
+		parkBase := maxStop + 1
+		for _, i := range changed {
+			park := parkBase + uint(i)
+			if err := tx.Model(&models.Visit{}).
+				Where("id = ?", orderedVisits[i].ID).
+				Update("stop_nr", park).Error; err != nil {
+				return err
+			}
+		}
+		for _, i := range changed {
+			stop := uint(i)
+			if err := internal.UpdateVisitValue(tx, orderedVisits[i].ID, fmt.Sprintf("%d", stop), user.ID, "stop_nr"); err != nil {
+				return err
+			}
+			if err := tx.Model(&models.Visit{}).
+				Where("id = ?", orderedVisits[i].ID).
+				Update("stop_nr", stop).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Errorf("OptimizeGroup: %s", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// route geometry over the full optimized order
+	waypoints := make([]tsp.Waypoint, 0, len(orderedVisits))
+	for i, v := range orderedVisits {
+		lat, _ := strconv.ParseFloat(v.Latitude, 64)
+		lon, _ := strconv.ParseFloat(v.Longitude, 64)
+		waypoints = append(waypoints, tsp.Waypoint{
+			ID:    strconv.FormatUint(uint64(v.ID), 10),
+			Label: fmt.Sprintf("%d", i),
+			Lat:   lat,
+			Lon:   lon,
+		})
+	}
+	geometry, distance, travelTime, err := tsp.RouteGeometry(waypoints, costing, mode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// reflect the persisted order on the returned visits
+	for i := range orderedVisits {
+		stop := uint(i)
+		orderedVisits[i].Stopnr = &stop
+	}
+
+	c.JSON(http.StatusOK, tsp.OptimizeResponse{
+		Waypoints: waypoints,
+		Distance:  distance,
+		Time:      travelTime,
+		Geometry:  geometry,
+		Optimal:   len(waypoints) <= 25,
+	})
+}

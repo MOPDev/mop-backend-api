@@ -3,11 +3,11 @@ package tsp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -509,6 +509,94 @@ func permute(arr []int, start int, callback func([]int)) {
 
 // ========== Handlers ==========
 
+// SolveWaypoints reorders the waypoints by solving an open TSP with the given
+// endpoint constraints. The road geometry is not fetched here.
+func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixedEnd bool) ([]Waypoint, error) {
+	if len(waypoints) < 2 {
+		return nil, errors.New("need at least 2 waypoints")
+	}
+
+	locations := make([]Location, len(waypoints))
+	for i, w := range waypoints {
+		locations[i] = Location{Lat: w.Lat, Lon: w.Lon}
+	}
+
+	matrix, err := getMatrixFromValhalla(locations, costing, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	order := solveOrder(matrix, fixedStart, fixedEnd)
+
+	ordered := make([]Waypoint, len(waypoints))
+	for i, idx := range order {
+		ordered[i] = waypoints[idx]
+	}
+	return ordered, nil
+}
+
+// RouteGeometry fetches the road geometry for the waypoints in the given order.
+// Returns one encoded polyline per leg, plus total distance and travel time.
+func RouteGeometry(waypoints []Waypoint, costing, mode string) ([]string, float64, float64, error) {
+	routeResp, err := getRouteFromValhalla(waypoints, costing, mode)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	geometry := make([]string, 0, len(routeResp.Trip.Legs))
+	for _, leg := range routeResp.Trip.Legs {
+		geometry = append(geometry, leg.Shape)
+	}
+	return geometry, routeResp.Trip.Summary.Distance, routeResp.Trip.Summary.Time, nil
+}
+
+// solveOrder maps the fixed start/end flags onto the solver.
+func solveOrder(matrix [][]float64, fixedStart, fixedEnd bool) []int {
+	n := len(matrix)
+	startIdx := 0
+	fixedEndIdx := -1 // -1 means "not fixed"
+
+	switch {
+	case fixedStart && fixedEnd:
+		// waypoints[0] is start, waypoints[n-1] is end
+		startIdx, fixedEndIdx = 0, n-1
+	case fixedStart && !fixedEnd:
+		// waypoints[0] is start, end is free
+		startIdx, fixedEndIdx = 0, -1
+	case !fixedStart && fixedEnd:
+		// end fixed, start free: run with waypoints[n-1] as "start", reverse at the end
+		startIdx, fixedEndIdx = -1, n-1
+	default:
+		// fully free (classic open TSP)
+		startIdx, fixedEndIdx = -1, -1
+	}
+
+	if n <= 25 {
+		switch {
+		case startIdx == -1 && fixedEndIdx == -1:
+			order, _, _ := heldKarp(matrix, 0, -1)
+			return order
+		case startIdx == -1 && fixedEndIdx >= 0:
+			revOrder, _, _ := heldKarp(reverseMatrix(matrix), fixedEndIdx, -1)
+			return reverseOrder(revOrder)
+		default:
+			order, _, _ := heldKarp(matrix, startIdx, fixedEndIdx)
+			return order
+		}
+	}
+
+	// Larger problem: nearest neighbor + 2-opt
+	effectiveStart := startIdx
+	if effectiveStart == -1 {
+		effectiveStart = 0 // arbitrary pick for NN
+	}
+
+	nnOrder := nearestNeighbor(matrix, effectiveStart, fixedEndIdx)
+	hasFixedEnd := fixedEndIdx >= 0
+	order, _ := twoOpt(nnOrder, matrix, effectiveStart, fixedEndIdx, hasFixedEnd)
+	return order
+}
+
 func OptimizeHandler(c *gin.Context) {
 	var req OptimizeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -521,120 +609,25 @@ func OptimizeHandler(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Get distance matrix from Valhalla
-	locations := make([]Location, len(req.Waypoints))
-	for i, w := range req.Waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon}
-	}
-
-	start := time.Now()
-	matrix, err := getMatrixFromValhalla(locations, req.Costing, req.Mode)
+	ordered, err := SolveWaypoints(req.Waypoints, req.Costing, req.Mode, req.FixedStart, req.FixedEnd)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	fmt.Printf("[%s] Matrix fetch took %v\n", time.Now().Format(time.RFC3339), time.Since(start))
 
-	// Step 2: Determine start/end indices based on flags
-	solveStart := time.Now()
-
-	startIdx := 0
-	fixedEndIdx := -1 // -1 means "not fixed"
-
-	n := len(req.Waypoints)
-
-	if req.FixedStart && req.FixedEnd {
-		// Both fixed: waypoints[0] is start, waypoints[n-1] is end
-		startIdx = 0
-		fixedEndIdx = n - 1
-	} else if req.FixedStart && !req.FixedEnd {
-		// Only start fixed: waypoints[0] is start, end is free
-		startIdx = 0
-		fixedEndIdx = -1
-	} else if !req.FixedStart && req.FixedEnd {
-		// Only end fixed: we need to swap - treat waypoints[n-1] as our "start"
-		// for the algorithm, then reverse at the end. OR, better: use it as fixed end directly
-		// by picking a free start (algorithm will choose best start too)
-
-		// Actually easiest: swap start/end concept - use last point as anchor
-		// We'll run heldKarp with startIdx = n-1 (fixed end becomes "start" in reverse)
-		// But this changes direction. Let's handle it more directly:
-
-		startIdx = -1 // signal "free start"
-		fixedEndIdx = n - 1
-	} else {
-		// Neither fixed: fully free (classic open TSP)
-		startIdx = -1
-		fixedEndIdx = -1
-	}
-
-	var order []int
-	var cost float64
-
-	if n <= 25 {
-		if startIdx == -1 && fixedEndIdx == -1 {
-			// Fully free - try all possible starts, pick best
-			// (expensive but n<=25 so feasible? Actually this multiplies by n)
-			// Simpler: just fix start=0 arbitrarily since it's a symmetric-ish problem
-			// OR run held karp with reversed matrix trick
-			order, cost, _ = heldKarp(matrix, 0, -1)
-		} else if startIdx == -1 && fixedEndIdx >= 0 {
-			// Free start, fixed end: reverse the matrix and run with fixedEndIdx as start
-			reversedMatrix := reverseMatrix(matrix)
-			revOrder, revCost, _ := heldKarp(reversedMatrix, fixedEndIdx, -1)
-			order = reverseOrder(revOrder)
-			cost = revCost
-		} else {
-			// Fixed start (possibly also fixed end)
-			order, cost, _ = heldKarp(matrix, startIdx, fixedEndIdx)
-		}
-	} else {
-		// Larger problem: nearest neighbor + 2-opt
-		effectiveStart := startIdx
-		if effectiveStart == -1 {
-			effectiveStart = 0 // arbitrary pick for NN
-		}
-
-		nnOrder := nearestNeighbor(matrix, effectiveStart, fixedEndIdx)
-		cost = calculateTourDistance(nnOrder, matrix)
-
-		hasFixedEnd := fixedEndIdx >= 0
-		order, cost = twoOpt(nnOrder, matrix, effectiveStart, fixedEndIdx, hasFixedEnd)
-	}
-
-	fmt.Printf("[%s] TSP solve took %v (cost: %.2f)\n", time.Now().Format(time.RFC3339), time.Since(solveStart), cost)
-
-	// Step 3: Reorder waypoints
-	orderedWaypoints := make([]Waypoint, len(req.Waypoints))
-	for i, idx := range order {
-		orderedWaypoints[i] = req.Waypoints[idx]
-	}
-
-	// Step 4: Get actual route geometry
-	routeStart := time.Now()
-	routeResp, err := getRouteFromValhalla(orderedWaypoints, req.Costing, req.Mode)
+	geometry, distance, travelTime, err := RouteGeometry(ordered, req.Costing, req.Mode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	fmt.Printf("[%s] Route fetch took %v\n", time.Now().Format(time.RFC3339), time.Since(routeStart))
 
-	// Step 5: Build response
-	geometry := []string{}
-	for _, leg := range routeResp.Trip.Legs {
-		geometry = append(geometry, leg.Shape)
-	}
-
-	response := OptimizeResponse{
-		Waypoints: orderedWaypoints,
-		Distance:  routeResp.Trip.Summary.Distance,
-		Time:      routeResp.Trip.Summary.Time,
+	c.JSON(http.StatusOK, OptimizeResponse{
+		Waypoints: ordered,
+		Distance:  distance,
+		Time:      travelTime,
 		Geometry:  geometry,
 		Optimal:   len(req.Waypoints) <= 25,
-	}
-
-	fmt.Printf("[%s] Total optimization time: %v\n", time.Now().Format(time.RFC3339), time.Since(start))
-	c.JSON(http.StatusOK, response)
+	})
 }
 
 // Helper: reverse a matrix (swap from/to) for "fixed end, free start" case
