@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
@@ -415,12 +417,23 @@ func groupSegments(visits []models.Visit) []groupSegment {
 		return derefUint(sorted[i].Stopnr) < derefUint(sorted[j].Stopnr)
 	})
 
-	var segs []groupSegment
-	for i, v := range sorted {
-		if i == 0 || derefUint(sorted[i-1].SegmentIndex) != derefUint(v.SegmentIndex) {
-			segs = append(segs, groupSegment{})
+	// group by segment_index, not by adjacency in stop_nr order —
+	// stop_nr can interleave segments (see bug: a segment-1 stop
+	// sitting between segment-0 stops).
+	byIdx := map[uint][]models.Visit{}
+	var order []uint
+	for _, v := range sorted {
+		idx := derefUint(v.SegmentIndex)
+		if _, ok := byIdx[idx]; !ok {
+			order = append(order, idx)
 		}
-		segs[len(segs)-1].visits = append(segs[len(segs)-1].visits, v)
+		byIdx[idx] = append(byIdx[idx], v)
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+
+	segs := make([]groupSegment, len(order))
+	for i, idx := range order {
+		segs[i].visits = byIdx[idx]
 	}
 	for i := range segs {
 		segs[i].isLast = i == len(segs)-1
@@ -429,6 +442,17 @@ func groupSegments(visits []models.Visit) []groupSegment {
 			segs[i].visits = append(segs[i].visits, nextFirst)
 		}
 	}
+
+	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		for i, s := range segs {
+			ids := make([]string, len(s.visits))
+			for j, v := range s.visits {
+				ids[j] = fmt.Sprintf("id=%d/stop=%d/seg=%d", v.ID, derefUint(v.Stopnr), derefUint(v.SegmentIndex))
+			}
+			logger.Infof("segment %d (isLast=%v, n=%d): %s", i, s.isLast, len(s.visits), strings.Join(ids, ", "))
+		}
+	}
+
 	return segs
 }
 
@@ -500,10 +524,22 @@ func OptimizeGroup(c *gin.Context) {
 		}
 
 		// the first stop is anchored.
-		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, false) //!s.isLast
+		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, !s.isLast)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
+		}
+
+		if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+			in := make([]string, len(waypoints))
+			for i, w := range waypoints {
+				in[i] = w.ID
+			}
+			out := make([]string, len(solved))
+			for i, w := range solved {
+				out[i] = w.ID
+			}
+			logger.Infof("segment solve: in=%v out=%v", in, out)
 		}
 
 		byID := make(map[string]models.Visit, len(s.visits))
@@ -517,6 +553,14 @@ func OptimizeGroup(c *gin.Context) {
 		for _, w := range solved[:end] {
 			orderedVisits = append(orderedVisits, byID[w.ID])
 		}
+	}
+
+	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		ids := make([]string, len(orderedVisits))
+		for i, v := range orderedVisits {
+			ids[i] = fmt.Sprintf("id=%d", v.ID)
+		}
+		logger.Infof("final ordered visits: %v", ids)
 	}
 
 	// persist the new stop_nr (0-based, dense) in a transaction
