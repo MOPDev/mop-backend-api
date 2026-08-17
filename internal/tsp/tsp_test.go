@@ -239,3 +239,14 @@ func TestCoLocatedMatrixNotUnreachable(t *testing.T) {
 		t.Fatal("coLocated should be false for distant locations")
 	}
 }
+
+func TestHasUnreachablePair(t *testing.T) {
+	ok := [][]float64{{0, 5}, {5, 0}}
+	if hasUnreachablePair(ok) {
+		t.Fatal("expected reachable matrix to pass")
+	}
+	bad := [][]float64{{0, -0.0}, {5, 0}}
+	if !hasUnreachablePair(bad) {
+		t.Fatal("expected unreachable cell to be detected")
+	}
+}

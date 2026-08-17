@@ -570,14 +570,23 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 		return nil, errors.New("need at least 2 waypoints")
 	}
 
-	locations := make([]Location, len(waypoints))
-	for i, w := range waypoints {
-		locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: 50} // ponytail: match route request's snap radius, unsnapped points return bogus 0-cost edges
-	}
-
-	matrix, err := getMatrixFromValhalla(locations, costing, mode)
-	if err != nil {
-		return nil, err
+	// ponytail: escalate snap radius only on failure, most stops resolve at 50m,
+	// bump the ceiling if a stop still fails at 200m
+	radii := []int{50, 200, 400, 800}
+	var matrix [][]float64
+	var err error
+	for _, r := range radii {
+		locations := make([]Location, len(waypoints))
+		for i, w := range waypoints {
+			locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: r}
+		}
+		matrix, err = getMatrixFromValhalla(locations, costing, mode)
+		if err != nil {
+			return nil, err
+		}
+		if !hasUnreachablePair(matrix) {
+			break
+		}
 	}
 
 	order := solveOrder(matrix, fixedStart, fixedEnd)
@@ -587,6 +596,22 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 		ordered[i] = waypoints[idx]
 	}
 	return ordered, nil
+}
+
+// hasUnreachablePair reports true if any off-diagonal cell is unreachable
+// (Valhalla marks these with a -0/negative-zero cost).
+func hasUnreachablePair(matrix [][]float64) bool {
+	for i := range matrix {
+		for j := range matrix[i] {
+			if i == j {
+				continue
+			}
+			if matrix[i][j] <= 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RouteResult is the geometry + travel data for an ordered route.
