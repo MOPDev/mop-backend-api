@@ -563,6 +563,26 @@ func permute(arr []int, start int, callback func([]int)) {
 
 // ========== Handlers ==========
 
+// BuildMatrix builds the NxN cost matrix for the given waypoints, retrying
+// with escalating snap radii on failure.
+func BuildMatrix(waypoints []Waypoint, costing, mode string) ([][]float64, error) {
+	radii := []int{50, 200, 400, 800}
+	for _, radius := range radii {
+		locations := make([]Location, len(waypoints))
+		for i, w := range waypoints {
+			locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: radius}
+		}
+		matrix, err := getMatrixFromValhalla(locations, costing, mode)
+		if err != nil {
+			return nil, err
+		}
+		if !hasUnreachablePair(matrix) {
+			return matrix, nil
+		}
+	}
+	return nil, errors.New("some waypoints are unreachable at the maximum snap radius")
+}
+
 // SolveWaypoints reorders the waypoints by solving an open TSP with the given
 // endpoint constraints. The road geometry is not fetched here.
 func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixedEnd bool) ([]Waypoint, error) {
@@ -570,23 +590,9 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 		return nil, errors.New("need at least 2 waypoints")
 	}
 
-	// ponytail: escalate snap radius only on failure, most stops resolve at 50m,
-	// bump the ceiling if a stop still fails at 200m
-	radii := []int{50, 200, 400, 800}
-	var matrix [][]float64
-	var err error
-	for _, r := range radii {
-		locations := make([]Location, len(waypoints))
-		for i, w := range waypoints {
-			locations[i] = Location{Lat: w.Lat, Lon: w.Lon, Radius: r}
-		}
-		matrix, err = getMatrixFromValhalla(locations, costing, mode)
-		if err != nil {
-			return nil, err
-		}
-		if !hasUnreachablePair(matrix) {
-			break
-		}
+	matrix, err := BuildMatrix(waypoints, costing, mode)
+	if err != nil {
+		return nil, err
 	}
 
 	order := solveOrder(matrix, fixedStart, fixedEnd)

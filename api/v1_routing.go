@@ -404,14 +404,11 @@ type groupSegment struct {
 }
 
 // groupSegments splits visits (sorted by stop_nr) into contiguous segments by
-// segment_index. Each non-last segment also carries the first stop of the
-// next segment appended as its fixed end anchor — that stop is solved twice
-// (once as this segment's end, once as the next segment's start) but only
-// the next segment's copy is kept in the final order, so it is not
-// duplicated in the output. The final segment carries no such anchor and is
-// marked isLast. A size-1 segment is a locked stop (forced end point),
-// never optimized.
-func groupSegments(visits []models.Visit) []groupSegment {
+// segment_index. When borrowAnchors is true, each non-last segment also
+// carries the first stop of the next segment appended as its fixed end anchor.
+// The free-endpoint solver does NOT use borrowed anchors; it receives real
+// segment boundaries only.
+func groupSegments(visits []models.Visit, borrowAnchors bool) []groupSegment {
 	sorted := append([]models.Visit(nil), visits...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return derefUint(sorted[i].Stopnr) < derefUint(sorted[j].Stopnr)
@@ -437,9 +434,13 @@ func groupSegments(visits []models.Visit) []groupSegment {
 	}
 	for i := range segs {
 		segs[i].isLast = i == len(segs)-1
-		if !segs[i].isLast {
-			nextFirst := segs[i+1].visits[0]
-			segs[i].visits = append(segs[i].visits, nextFirst)
+	}
+	if borrowAnchors {
+		for i := range segs {
+			if !segs[i].isLast {
+				nextFirst := segs[i+1].visits[0]
+				segs[i].visits = append(segs[i].visits, nextFirst)
+			}
 		}
 	}
 
@@ -458,7 +459,7 @@ func groupSegments(visits []models.Visit) []groupSegment {
 
 // OptimizeGroup runs one TSP per segment inside a group, persists the new
 // stop_nr order, and returns the optimized route with road geometry.
-// body: {"costing": "auto", "mode": "distance"} (both optional, defaults shown)
+// body: {"costing": "auto", "mode": "distance", "freeEndpoints": false}
 func OptimizeGroup(c *gin.Context) {
 	user, ok := getVerifyUser(c)
 	if !ok {
@@ -473,8 +474,9 @@ func OptimizeGroup(c *gin.Context) {
 	}
 
 	var input struct {
-		Costing string `json:"costing"`
-		Mode    string `json:"mode"`
+		Costing       string `json:"costing"`
+		Mode          string `json:"mode"`
+		FreeEndpoints bool   `json:"freeEndpoints"`
 	}
 	_ = c.ShouldBindJSON(&input)
 	costing := input.Costing
@@ -497,62 +499,18 @@ func OptimizeGroup(c *gin.Context) {
 		return
 	}
 
-	segs := groupSegments(visits)
+	segs := groupSegments(visits, !input.FreeEndpoints)
 
-	// solve each segment, then concatenate the ordered visits
-	orderedVisits := make([]models.Visit, 0, len(visits))
-	for _, s := range segs {
-		if len(s.visits) < 2 {
-			orderedVisits = append(orderedVisits, s.visits...)
-			continue
-		}
+	var orderedVisits []models.Visit
 
-		waypoints := make([]tsp.Waypoint, 0, len(s.visits))
-		for _, v := range s.visits {
-			lat, latErr := strconv.ParseFloat(v.Latitude, 64)
-			lon, lonErr := strconv.ParseFloat(v.Longitude, 64)
-			if latErr != nil || lonErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("visit %d has invalid coordinates", v.ID)})
-				return
-			}
-			waypoints = append(waypoints, tsp.Waypoint{
-				ID:    strconv.FormatUint(uint64(v.ID), 10),
-				Label: fmt.Sprintf("%d", derefUint(v.Stopnr)),
-				Lat:   lat,
-				Lon:   lon,
-			})
-		}
-
-		// the first stop is anchored.
-		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, !s.isLast)
+	if input.FreeEndpoints {
+		orderedVisits, err = optimizeFree(visits, segs, costing, mode)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		if strings.ToLower(os.Getenv("DEBUG")) == "true" {
-			in := make([]string, len(waypoints))
-			for i, w := range waypoints {
-				in[i] = w.ID
-			}
-			out := make([]string, len(solved))
-			for i, w := range solved {
-				out[i] = w.ID
-			}
-			logger.Infof("segment solve: in=%v out=%v", in, out)
-		}
-
-		byID := make(map[string]models.Visit, len(s.visits))
-		for _, v := range s.visits {
-			byID[strconv.FormatUint(uint64(v.ID), 10)] = v
-		}
-		end := len(solved)
-		if !s.isLast {
-			end-- // drop the borrowed next-segment anchor, next segment emits it
-		}
-		for _, w := range solved[:end] {
-			orderedVisits = append(orderedVisits, byID[w.ID])
-		}
+	} else {
+		orderedVisits = optimizeSegmented(visits, segs, costing, mode)
 	}
 
 	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
@@ -642,4 +600,115 @@ func OptimizeGroup(c *gin.Context) {
 		Optimal:   len(waypoints) <= 25,
 		Overrun:   overrun,
 	})
+}
+
+// optimizeSegmented runs the classic per-segment TSP (fixed start, fixed end
+// for non-last segments). Used for all modes except "free".
+func optimizeSegmented(visits []models.Visit, segs []groupSegment, costing, mode string) []models.Visit {
+	orderedVisits := make([]models.Visit, 0, len(visits))
+	for _, s := range segs {
+		if len(s.visits) < 2 {
+			orderedVisits = append(orderedVisits, s.visits...)
+			continue
+		}
+
+		waypoints := make([]tsp.Waypoint, 0, len(s.visits))
+		for _, v := range s.visits {
+			lat, _ := strconv.ParseFloat(v.Latitude, 64)
+			lon, _ := strconv.ParseFloat(v.Longitude, 64)
+			waypoints = append(waypoints, tsp.Waypoint{
+				ID:    strconv.FormatUint(uint64(v.ID), 10),
+				Label: fmt.Sprintf("%d", derefUint(v.Stopnr)),
+				Lat:   lat,
+				Lon:   lon,
+			})
+		}
+
+		solved, err := tsp.SolveWaypoints(waypoints, costing, mode, true, !s.isLast)
+		if err != nil {
+			// fallback: keep original order for this segment
+			for _, v := range s.visits {
+				orderedVisits = append(orderedVisits, v)
+			}
+			continue
+		}
+
+		byID := make(map[string]models.Visit, len(s.visits))
+		for _, v := range s.visits {
+			byID[strconv.FormatUint(uint64(v.ID), 10)] = v
+		}
+		end := len(solved)
+		if !s.isLast {
+			end--
+		}
+		for _, w := range solved[:end] {
+			orderedVisits = append(orderedVisits, byID[w.ID])
+		}
+	}
+	return orderedVisits
+}
+
+// optimizeFree solves a segmented TSP with free start for segment 0 and free
+// end for the last segment. It builds one cost matrix for all visits and
+// runs the segment-level DP solver.
+func optimizeFree(visits []models.Visit, segs []groupSegment, costing, mode string) ([]models.Visit, error) {
+	// Flatten all visits into one waypoint list, track segment sizes
+	var allWaypoints []tsp.Waypoint
+	segmentSizes := make([]int, len(segs))
+	for i, s := range segs {
+		for _, v := range s.visits {
+			lat, latErr := strconv.ParseFloat(v.Latitude, 64)
+			lon, lonErr := strconv.ParseFloat(v.Longitude, 64)
+			if latErr != nil || lonErr != nil {
+				return nil, fmt.Errorf("visit %d has invalid coordinates", v.ID)
+			}
+			allWaypoints = append(allWaypoints, tsp.Waypoint{
+				ID:    strconv.FormatUint(uint64(v.ID), 10),
+				Label: fmt.Sprintf("%d", derefUint(v.Stopnr)),
+				Lat:   lat,
+				Lon:   lon,
+			})
+		}
+		segmentSizes[i] = len(s.visits)
+	}
+
+	solved, err := tsp.SolveSegmentedWaypoints(allWaypoints, segmentSizes, costing, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	byID := make(map[string]models.Visit, len(visits))
+	for _, v := range visits {
+		byID[strconv.FormatUint(uint64(v.ID), 10)] = v
+	}
+
+	orderedVisits := make([]models.Visit, 0, len(visits))
+	for _, w := range solved {
+		orderedVisits = append(orderedVisits, byID[w.ID])
+	}
+
+	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		assertSameVisits(orderedVisits, visits)
+	}
+	return orderedVisits, nil
+}
+
+// assertSameVisits panics if the optimized visit list has a different set or
+// count of visits than the input. DEBUG-only safety net.
+func assertSameVisits(got, want []models.Visit) {
+	if len(got) != len(want) {
+		panic(fmt.Sprintf("optimized route changed visit count: got %d, want %d", len(got), len(want)))
+	}
+	seen := make(map[uint]bool, len(got))
+	for _, v := range got {
+		if seen[v.ID] {
+			panic(fmt.Sprintf("optimized route contains duplicate visit %d", v.ID))
+		}
+		seen[v.ID] = true
+	}
+	for _, v := range want {
+		if !seen[v.ID] {
+			panic(fmt.Sprintf("optimized route lost visit %d", v.ID))
+		}
+	}
 }
