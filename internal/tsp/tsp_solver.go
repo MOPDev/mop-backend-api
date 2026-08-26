@@ -604,15 +604,16 @@ func SolveWaypoints(waypoints []Waypoint, costing, mode string, fixedStart, fixe
 	return ordered, nil
 }
 
-// hasUnreachablePair reports true if any off-diagonal cell is unreachable
-// (Valhalla marks these with a -0/negative-zero cost).
+// hasUnreachablePair reports true if any off-diagonal cell is unreachable.
+// Valhalla marks unreachable pairs with a negative value or -0 (IEEE 754
+// negative zero). Co-located stops get positive zero, which is valid.
 func hasUnreachablePair(matrix [][]float64) bool {
 	for i := range matrix {
 		for j := range matrix[i] {
 			if i == j {
 				continue
 			}
-			if matrix[i][j] <= 0 {
+			if matrix[i][j] < 0 || (matrix[i][j] == 0 && math.Signbit(matrix[i][j])) {
 				return true
 			}
 		}

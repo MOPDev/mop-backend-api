@@ -62,9 +62,9 @@ func SolveSegmentedTSP(matrix [][]float64, segIdx [][]int) ([]int, float64) {
 
 	// DP across segments
 	type dpState struct {
-		cost                           float64
-		prevSegExitLocal, entryLocal   int
-		firstSegEntryLocal            int
+		cost                         float64
+		prevSegExitLocal, entryLocal int
+		firstSegEntryLocal           int
 	}
 	dp := make([]map[int]dpState, nSegs)
 	for i := range dp {
@@ -77,7 +77,7 @@ func SolveSegmentedTSP(matrix [][]float64, segIdx [][]int) ([]int, float64) {
 		existing, seen := dp[0][exitLocal]
 		if !seen || sol.cost < existing.cost {
 			dp[0][exitLocal] = dpState{
-				cost:              sol.cost,
+				cost:               sol.cost,
 				firstSegEntryLocal: key.entry,
 			}
 		}
@@ -111,7 +111,7 @@ func SolveSegmentedTSP(matrix [][]float64, segIdx [][]int) ([]int, float64) {
 				if !seen || bestCost < existing.cost {
 					dp[i][exitLocal] = dpState{
 						cost:             bestCost,
-						prevSegExitLocal:  bestPrevExitLocal,
+						prevSegExitLocal: bestPrevExitLocal,
 						entryLocal:       entryLocal,
 					}
 				}
