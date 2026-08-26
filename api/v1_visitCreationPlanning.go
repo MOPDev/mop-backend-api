@@ -15,12 +15,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// this function creates the visits that the user chooses,
+// the visit is created
+// and they are then initalized in the database and created as an excel file
 func VisitCreation(c *gin.Context) {
 	user, _ := getVerifyUser(c)
 
-	// this function creates the visits that the user chooses,
-	// the visit is created
-	// and they are then initalized in the database and created as an excel file
 	type debitorData struct {
 		DebitorId int64  `json:"debitorId"`
 		Navn      string `json:"navn"`
@@ -62,12 +62,9 @@ func VisitCreation(c *gin.Context) {
 	advoDataMap, err := internal.FetchBulkCaseData(sagsIds)
 	if err != nil {
 		log.Println("Error fetching bulk case data:", err)
-		// Decide if you want to fail or just continue with empty fields
 	}
 
 	var createdVisits []models.Visit
-	// ponytail: whole create-visits+create-debitors block is one unit of work,
-	// any failure must undo all prior inserts in this request
 	err = initializers.DB.Transaction(func(tx *gorm.DB) error {
 		for _, visitData := range visitsData {
 			var notes string
@@ -152,29 +149,19 @@ func VisitCreation(c *gin.Context) {
 
 	logger.Infof("Created visits count: %d", len(createdVisits))
 
-	// re fetch the visits to ensure debitor is there
-
-	// first collect all ids
 	var createdIDs []uint
 	for _, v := range createdVisits {
 		createdIDs = append(createdIDs, v.ID)
 	}
 
-	// then get from database
 	var fullyLoadedVisits []models.Visit
 	initializers.DB.Preload("Debitors").Where("id IN ?", createdIDs).Find(&fullyLoadedVisits)
 
-	// logging
 	for _, object := range fullyLoadedVisits {
 		internal.LogVisitCreate(user, object)
 	}
-	// then return an excel sheet with the visits on it
-	// Generate Excel
-	f, err := excel.GenerateVisitsExcel(fullyLoadedVisits)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	}
-	excel.SendExcelResponse(c, f, "visits.xlsx")
+
+	c.JSON(http.StatusOK, gin.H{"created": len(createdVisits)})
 }
 
 func VisitFile(c *gin.Context) {
