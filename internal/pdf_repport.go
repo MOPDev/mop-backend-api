@@ -331,7 +331,7 @@ func fillCarBox(pdf *fpdf.Fpdf, v models.Visit, CarBoxX float64, CarBoxY float64
 	asset := v.VisitResponse.Asset
 
 	questionRow(pdf, "Aktiv Skadet?", asset.AssetStatus, "")
-	questionRow(pdf, "Received keys", optionalBoolToStr(asset.AssetKeysDelivered), "")
+	questionRow(pdf, "Modtaget nøgler", optionalBoolToStr(asset.AssetKeysDelivered), "")
 	questionRow(pdf, "Er den på adressen?", optionalBoolToStr(asset.AssetSeen), "")
 	questionRow(pdf, "Er den ren?", asset.AssetCleanliness, "")
 	questionRow(pdf, "Bilen afleveret?", optionalBoolToStr(asset.IsSeized), "")
@@ -373,9 +373,9 @@ func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, Finance
 	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
 
 	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
-	questionRow(pdf, "overførsler", income, "pr. måned")
-	questionRow(pdf, "netto fra arbj.", salary, "pr. måned")
-	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "pr. måned")
+	questionRow(pdf, "Offentlige ydelser", income, "kr. pr. mnd. kontanthjælp, pension, SU") //
+	questionRow(pdf, "Månedsløn (Netto)", salary, "kr. pr. måned")
+	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "kr. pr. måned")
 
 	amountStr := "-"
 	if p := v.VisitResponse.Monetary.DebtAmountPaid; p != nil {
