@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
@@ -15,34 +16,35 @@ import (
 	"gorm.io/gorm"
 )
 
+type debitorData struct {
+	DebitorId int64  `json:"debitorId"`
+	Navn      string `json:"navn"`
+}
+
+type visitData struct {
+	Sagsnr           int64            `json:"sagsnr"`
+	Adresse          string           `json:"adresse"`
+	Postnr           string           `json:"postnr"`
+	Bynavn           string           `json:"bynavn"`
+	Noter            *string          `json:"noter"`
+	Debtors          []debitorData    `json:"debtors"`
+	VisitType        models.VisitType `json:"visit_type"`
+	KlientRef        string           `json:"klientRef"`
+	Klientnavn       string           `json:"klientnavn"`
+	Klientnr         int64            `json:"klientnr"`
+	Sagvedr          string           `json:"sagvedr"`
+	FristDato        string           `json:"frist_dato"`
+	Latitude         string           `json:"latitude"`
+	Longitude        string           `json:"longitude"`
+	GeocodingAddress string           `json:"geocoding_address"`
+}
+
 // this function creates the visits that the user chooses,
 // the visit is created
 // and they are then initalized in the database and created as an excel file
 func VisitCreation(c *gin.Context) {
 	user, _ := getVerifyUser(c)
 
-	type debitorData struct {
-		DebitorId int64  `json:"debitorId"`
-		Navn      string `json:"navn"`
-	}
-
-	type visitData struct {
-		Sagsnr           int64            `json:"sagsnr"`
-		Adresse          string           `json:"adresse"`
-		Postnr           string           `json:"postnr"`
-		Bynavn           string           `json:"bynavn"`
-		Noter            *string          `json:"noter"`
-		Debtors          []debitorData    `json:"debtors"`
-		VisitType        models.VisitType `json:"visit_type"`
-		KlientRef        string           `json:"klientRef"` // fixed
-		Klientnavn       string           `json:"klientnavn"`
-		Klientnr         int64            `json:"klientnr"`
-		Sagvedr          string           `json:"sagvedr"`
-		FristDato        string           `json:"frist_dato"`
-		Latitude         string           `json:"latitude"`
-		Longitude        string           `json:"longitude"`
-		GeocodingAddress string           `json:"geocoding_address"`
-	}
 	var visitsData []visitData
 
 	if err := c.ShouldBindBodyWithJSON(&visitsData); err != nil {
@@ -53,6 +55,8 @@ func VisitCreation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No data is sent"})
 		return
 	}
+
+	visitsData = mergeByGeocode(visitsData)
 
 	var sagsIds []uint
 	for _, vd := range visitsData {
@@ -162,6 +166,40 @@ func VisitCreation(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"created": len(createdVisits)})
+}
+
+// mergeByGeocode collapses visits that share the same sagsnr and the same
+// normalized geocoding address, merging their debtors into one entry.
+// ponytail: normalization is just lower+trim+collapse-spaces; good enough
+// since the geocoder already sanitizes the address. Add real dedupe (e.g.
+// lat/long rounding) only if geocoded strings start diverging for same spot.
+func mergeByGeocode(in []visitData) []visitData {
+	normalize := func(s string) string {
+		s = strings.ToLower(strings.TrimSpace(s))
+		return strings.Join(strings.Fields(s), " ")
+	}
+
+	order := []string{}
+	merged := make(map[string]*visitData)
+
+	for i := range in {
+		v := in[i]
+		key := fmt.Sprintf("%d_%s", v.Sagsnr, normalize(v.GeocodingAddress))
+
+		if existing, ok := merged[key]; ok {
+			existing.Debtors = append(existing.Debtors, v.Debtors...)
+			continue
+		}
+		vCopy := v
+		merged[key] = &vCopy
+		order = append(order, key)
+	}
+
+	out := make([]visitData, 0, len(order))
+	for _, key := range order {
+		out = append(out, *merged[key])
+	}
+	return out
 }
 
 func VisitFile(c *gin.Context) {
