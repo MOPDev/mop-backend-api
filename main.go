@@ -81,9 +81,11 @@ func start_server() {
 		//CurrentDebtCase
 		apiv1.DELETE("/visit/byId", middleware.RequireAuthOfficeWorker, api.DeleteVisit)
 
-		apiv1.GET("/visits/AvailableVisit", middleware.RequireAuthOfficeWorker, api.AvailableVisitCreation) // gets visits that can be created
-		apiv1.POST("/visits/create", middleware.RequireAuthOfficeWorker, api.VisitCreation)                 // creates thoses visits
-		apiv1.GET("/visits/create", middleware.RequireAuthOfficeWorker, api.CreatedVisits)                  // retrives the created visits that have not yet been planned
+		apiv1.GET("/visits/AvailableVisit", middleware.RequireAuthOfficeWorker, api.AvailableVisitCreation)          // gets visits that can be created
+		apiv1.POST("/visits/AvailableVisitBySagsnr", middleware.RequireAuthOfficeWorker, api.AvailableVisitBySagsnr) // gets visits that can be created by sagsnr
+
+		apiv1.POST("/visits/create", middleware.RequireAuthOfficeWorker, api.VisitCreation) // creates thoses visits
+		apiv1.GET("/visits/create", middleware.RequireAuthOfficeWorker, api.CreatedVisits)  // retrives the created visits that have not yet been planned
 		apiv1.GET("/visits/:visitId/besogsbrev", middleware.RequireAuthUser, api.GetBesogsbrevHandler)
 		apiv1.GET("/visits/:visitId/SF", middleware.RequireAuthUser, api.GetSFHandler)
 		apiv1.GET("/visits/besogsbrev/batch", middleware.RequireAuthUser, api.GetBatchHandler)

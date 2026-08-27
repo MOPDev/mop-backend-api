@@ -182,6 +182,26 @@ func questionRow(pdf *fpdf.Fpdf, label string, answer string, details string) {
 	pdf.SetXY(x, y)
 }
 
+// prints all issues as one wrapped block instead of one row per issue
+func propertyIssuesRow(pdf *fpdf.Fpdf, label string, issues []string) {
+	labelW := 40.0
+	textW := 42.0 // answerW + detailW, so it wraps within the row's total width
+	lineH := 6.0
+
+	x, _ := pdf.GetXY()
+
+	pdf.SetFontStyle("B")
+	pdf.CellFormat(labelW, lineH, label, "", 0, "", false, 0, "")
+	pdf.SetFontStyle("")
+
+	text := strings.Join(issues, ", ")
+	pdf.MultiCell(textW, lineH, text, "", "L", false)
+
+	// MultiCell moves cursor to (x, y+usedHeight) already; just realign X
+	_, newY := pdf.GetXY()
+	pdf.SetXY(x, newY)
+}
+
 func civilStatusToString(status string) string {
 	return status
 }
@@ -313,14 +333,17 @@ func fillLifeBox(pdf *fpdf.Fpdf, v models.Visit, LifeBoxX float64, LifeBoxY floa
 	questionRow(pdf, "Anden truffet", optionalBoolToStr(contact.OtherMet), contact.OtherTitle)
 	questionRow(pdf, "Arbejder truffet", optionalBoolToStr(contact.WorkerMet), contact.WorkerTitle)
 	if contact.CorrectedTlf != "" || contact.CorrectedMail != "" {
-		questionRow(pdf, "Rettet tlf/mail", contact.CorrectedTlf, contact.CorrectedMail)
+		questionRow(pdf, "Rettet tlf", contact.CorrectedTlf, "")
+		questionRow(pdf, "Rettet mail", contact.CorrectedMail, "")
 	}
 
 	questionRow(pdf, "Civilstatus", civilStatusToString(v.VisitResponse.Monetary.CivilStatus), "")
 	questionRow(pdf, "Børn u/18 hjemme", optionalUintToStr(v.VisitResponse.Monetary.ChildrenUnder18), "")
 
 	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.Property.PropertyType), "")
-	questionRow(pdf, "Ejendomsbemærk.", propertyIssuesStr(v.VisitResponse.Property), "")
+
+	listOfString := strings.Split(propertyIssuesStr(v.VisitResponse.Property), ",")
+	propertyIssuesRow(pdf, "Ejendomsbemærk.", listOfString)
 
 }
 
@@ -380,9 +403,7 @@ func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, Finance
 	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
 
 	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
-	questionRow(pdf, "Offentlige ydelser", income, "kr. pr. måned") //
-
-	questionRow(pdf, "", "kontanthjælp, pension, ", "         SU")
+	questionRow(pdf, "Offentlige ydelser", income, "kr. pr. måned (kontanthjælp, pension, SU)") //
 	questionRow(pdf, "Månedsløn (Netto)", salary, "kr. pr. måned")
 	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "kr. pr. måned")
 
@@ -448,11 +469,15 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 
 	// sizing
 	boxHeightCar := 85.0
-	boxHeightLife := 70.0
+	boxHeightLife := 90.0
 	boxHeightFinance := 50.0
 	boxHeightComments := 50.0
 
 	boxWidth := 90.0
+	boxWidthCar := 90.0
+	boxWidthLife := 90.0
+	boxWidthFinance := 130.0
+
 	CommentsWidth := 190.0
 
 	// header placement
@@ -480,15 +505,15 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 	CommentsX := HEADER_cornerX // should be the same as the header
 
 	// left box (CAR)
-	pdf.Rect(CarX, CarLifeY, boxWidth, boxHeightCar, "D")
+	pdf.Rect(CarX, CarLifeY, boxWidthCar, boxHeightCar, "D")
 	fillCarBox(pdf, v, CarX, CarLifeY, boxWidth)
 
 	// right box (LIFE STATUS)
-	pdf.Rect(LifeX, CarLifeY, boxWidth, boxHeightLife, "D")
+	pdf.Rect(LifeX, CarLifeY, boxWidthLife, boxHeightLife, "D")
 	fillLifeBox(pdf, v, LifeX, CarLifeY, boxWidth)
 
 	// gæld
-	pdf.Rect(financeX, financeY, boxWidth, boxHeightFinance, "D")
+	pdf.Rect(financeX, financeY, boxWidthFinance, boxHeightFinance, "D")
 	fillFinanceBox(pdf, v, financeX, financeY, boxWidth)
 
 	// commentarer

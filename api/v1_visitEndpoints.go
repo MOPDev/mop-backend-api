@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -36,17 +35,12 @@ func Verifytoken(c *gin.Context) {
 	})
 }
 
-func AvailableVisitCreation(c *gin.Context) {
-	results, err := internal.ExecuteQuery(internal.Server, internal.AdvoPro, internal.StatusFemQuery)
-	if err != nil {
-		log.Fatal(err)
-	}
+func groupVisits(results []map[string]interface{}) []map[string]interface{} {
 
-	// Process results - group by address + sagsnr combination
 	var processedVisits = make(map[string]map[string]interface{})
 
 	for index, result := range results {
-		sagsnr := result["sagsnr"].(int64)
+		sagsnr, ok1 := result["sagsnr"].(int64)
 		adresse := result["adresse"].(string)
 		postnr := result["postnr"].(string)
 		bynavn := result["bynavn"].(string)
@@ -55,6 +49,11 @@ func AvailableVisitCreation(c *gin.Context) {
 		klientnr := result["klientnr"].(int64)
 		klientnavn := result["klientnavn"].(string)
 		sagVedr := result["sagVedr"].(string)
+
+		if !ok1 {
+			// we skip this one if not okay
+			continue
+		}
 
 		normalized := strings.ToLower(adresse)
 		if idx := strings.Index(normalized, ","); idx != -1 {
@@ -103,14 +102,54 @@ func AvailableVisitCreation(c *gin.Context) {
 		)
 	}
 
-	// Convert map to slice
 	var finalResults []map[string]interface{}
 	for _, value := range processedVisits {
 		finalResults = append(finalResults, value)
 	}
+	return finalResults
+}
+
+func AvailableVisitCreation(c *gin.Context) {
+	results, err := internal.ExecuteQuery(internal.Server, internal.AdvoPro, internal.StatusFemQuery)
+	if err != nil {
+		logger.Error(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+	}
+
+	finalResults := groupVisits(results) // extracted from AvailableVisitCreation
+
 	c.JSON(http.StatusOK, gin.H{
 		"results": finalResults,
 	})
+}
+
+type SagsnrRequest struct {
+	Sagsnr []int64 `json:"sagsnr" binding:"required,min=1"`
+}
+
+func AvailableVisitBySagsnr(c *gin.Context) {
+	var req SagsnrRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or missing sagsnr list"})
+		return
+	}
+
+	placeholders := make([]string, len(req.Sagsnr))
+	for i, s := range req.Sagsnr {
+		placeholders[i] = strconv.FormatInt(s, 10) // numeric, safe to inline
+	}
+	query := fmt.Sprintf(internal.CreateSagsnrQuery, strings.Join(placeholders, ","))
+
+	results, err := internal.ExecuteQuery(internal.Server, internal.AdvoPro, query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+		return
+	}
+
+	finalResults := groupVisits(results) // extracted from AvailableVisitCreation
+	c.JSON(http.StatusOK, gin.H{"results": finalResults})
 }
 
 func GetVisits(c *gin.Context) {

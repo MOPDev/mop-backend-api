@@ -30,6 +30,33 @@ WHERE
 	f.Status in (4,5,7,70,71,72,73)
 `
 
+const CreateSagsnrQuery = `
+SELECT
+    f.Sagsnr as sagsnr,
+    f.Status as status,
+    f.ForlobInfo as forlobInfo,
+    f.Fristdato,
+    d.Navn as navn,
+    d.Adresse as adresse,
+    d.Postnr as postnr,
+    d.Bynavn as bynavn,
+    d.Noter as noter,
+    d.DebitorId as debitorId,
+    s.Klientnr as klientnr,
+    s.KlientNavn as klientnavn,
+    s.SagVedr as sagVedr
+FROM
+    vwInkassoForlob f
+JOIN
+    vwInkassoForlobDebitor fd ON fd.ForlobId = f.ForlobId
+JOIN
+    vwInkassoDebitor d ON d.DebitorId = fd.DebitorId
+JOIN
+    vwInkassoSag s ON s.Sagsnr = f.Sagsnr
+WHERE
+    f.Sagsnr IN (%s)
+`
+
 const SagsnrQuery = `
 SELECT 
     F.Sagsnr as sagsnr,
