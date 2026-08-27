@@ -245,7 +245,7 @@ func TestHasUnreachablePair(t *testing.T) {
 	if hasUnreachablePair(ok) {
 		t.Fatal("expected reachable matrix to pass")
 	}
-	bad := [][]float64{{0, -0.0}, {5, 0}}
+	bad := [][]float64{{0, math.Copysign(0, -1)}, {5, 0}}
 	if !hasUnreachablePair(bad) {
 		t.Fatal("expected unreachable cell to be detected")
 	}

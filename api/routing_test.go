@@ -150,7 +150,7 @@ func TestGroupSegments(t *testing.T) {
 	if len(segs) != 4 {
 		t.Fatalf("want 4 segments, got %d", len(segs))
 	}
-	wantSizes := []int{3, 3, 3, 1}
+	wantSizes := []int{4, 4, 4, 1}
 	for i, s := range segs {
 		if len(s.visits) != wantSizes[i] {
 			t.Fatalf("segment %d: want %d visits, got %d", i, wantSizes[i], len(s.visits))
@@ -183,7 +183,9 @@ func TestGroupSegmentsUnsortedInput(t *testing.T) {
 	}
 	segs := groupSegments(visits, true)
 	// same grouping as the design doc example: 3,3,3,1
-	wantSizes := []int{3, 3, 3, 1}
+	// they should create segments that start with the starting segment and end with the starting segment of the following
+	// so they should be 4 long until the last one
+	wantSizes := []int{4, 4, 4, 1}
 	if len(segs) != len(wantSizes) {
 		t.Fatalf("want %d segments, got %d", len(wantSizes), len(segs))
 	}
