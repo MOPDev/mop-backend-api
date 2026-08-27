@@ -24,8 +24,15 @@ func colorStatus(status int) string {
 
 func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
 		path := c.Request.URL.Path
+
+		// remove the logging on specific paths
+		if strings.HasPrefix(path, "/api/v1/tiles") || strings.HasPrefix(path, "/api/v1/geocode") {
+			c.Next()
+			return
+		}
+
+		start := time.Now()
 		query := c.Request.URL.RawQuery
 
 		c.Next()
