@@ -293,6 +293,52 @@ func Visit_responses(c *gin.Context) {
 		})
 }
 
+func Visit_responses_user(c *gin.Context) {
+	requester, ok := getVerifyUser(c)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{})
+		return
+	}
+
+	targetID, err := strconv.Atoi(c.Param("userid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "Failure", "error": "invalid userid"})
+		return
+	}
+
+	// ponytail: same rights check as Visit_responses, own record always allowed
+	if requester.ID != uint(targetID) {
+		switch requester.Rights {
+		case models.RightsAdmin, models.RightsOfficeWorker, models.RightsDeveloper:
+			// allowed
+		default:
+			logger.Warnf("user %s with rights %s tried visit-response for user %d", requester.Name, requester.Rights, targetID)
+			c.JSON(http.StatusMethodNotAllowed, gin.H{"status": "Failure", "user": nil})
+			return
+		}
+	}
+
+	var target models.User
+	err = initializers.DB.
+		Preload("Visits").
+		Preload("Visits.Type").
+		Preload("Visits.Debitors").
+		Preload("Visits.VisitResponse").
+		Preload("Visits.Status").
+		First(&target, targetID).Error
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "Failure"})
+		return
+	}
+
+	target.Password = ""
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "sucess",
+		"user":   target,
+	})
+}
+
 // ponytail: swap so Min/Max is always ordered instead of rejecting the request;
 // caller doesn't care which field was typed as "higher"
 func orderMoney(min, max **models.Money) {
