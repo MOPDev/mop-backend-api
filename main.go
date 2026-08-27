@@ -24,6 +24,7 @@ func init() {
 
 func main() {
 	start_server()
+	//internal.GeneratePDFVisit(62)
 }
 
 func start_server() {

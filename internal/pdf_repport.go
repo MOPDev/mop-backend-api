@@ -92,6 +92,16 @@ func optionalBoolToStr(val *bool) string {
 	return "NEJ"
 }
 
+func optBoolText(b *bool, ifTrue, ifFalse string) string {
+	if b == nil {
+		return ""
+	}
+	if *b {
+		return ifTrue
+	}
+	return ifFalse
+}
+
 // moneyRangeStr formats a (min, max) Money pair for display.
 // Returns "-" if either pointer is nil.
 // Returns e.g. "1.000 kr. - 2.000 kr." when both are present.
@@ -310,7 +320,7 @@ func fillLifeBox(pdf *fpdf.Fpdf, v models.Visit, LifeBoxX float64, LifeBoxY floa
 	questionRow(pdf, "Børn u/18 hjemme", optionalUintToStr(v.VisitResponse.Monetary.ChildrenUnder18), "")
 
 	questionRow(pdf, "Hus?", optionalpropertyTypeToString(v.VisitResponse.Property.PropertyType), "")
-	questionRow(pdf, "Ejendomsbemærk.", "", propertyIssuesStr(v.VisitResponse.Property))
+	questionRow(pdf, "Ejendomsbemærk.", propertyIssuesStr(v.VisitResponse.Property), "")
 
 }
 
@@ -330,25 +340,22 @@ func fillCarBox(pdf *fpdf.Fpdf, v models.Visit, CarBoxX float64, CarBoxY float64
 	pdf.SetXY(CarBoxX, y)
 	asset := v.VisitResponse.Asset
 
+	accessible := optBoolText(asset.AssetAccessible, "og tilgængeligt", "men ikke tilgængetligt")
+	questionRow(pdf, "Aktiv set", optionalBoolToStr(asset.AssetSeen), accessible)
 	questionRow(pdf, "Aktiv Skadet?", asset.AssetStatus, "")
-	questionRow(pdf, "Modtaget nøgler", optionalBoolToStr(asset.AssetKeysDelivered), "")
-	questionRow(pdf, "Er den på adressen?", optionalBoolToStr(asset.AssetSeen), "")
 	questionRow(pdf, "Er den ren?", asset.AssetCleanliness, "")
+	assetConfirmed := optBoolText(asset.AssetConfirmedOwner, "Debitor ejer aktivet", "Debitor ejer ikke aktivet")
+	questionRow(pdf, "ejerforhold:", assetConfirmed, "")
+	questionRow(pdf, "Modtaget nøgler", optionalBoolToStr(asset.AssetKeysDelivered), "")
 	questionRow(pdf, "Bilen afleveret?", optionalBoolToStr(asset.IsSeized), "")
 	questionRow(pdf, "Salgsfuldmagt underskrevet", optionalBoolToStr(asset.SFSigned), "")
 
-	if asset.ContractType != "" {
-		questionRow(pdf, "Kontrakttype", asset.ContractType, "")
-	}
-	if asset.OdometerKm != nil {
-		questionRow(pdf, "Kilometertal", optionalUintToStr(asset.OdometerKm), "km")
-	}
-	if asset.HandoverStrategy != "" {
-		questionRow(pdf, "Overdragelse", asset.HandoverStrategy, "")
-	}
-	if asset.TransportProvider != "" {
-		questionRow(pdf, "Transportør", asset.TransportProvider, "")
-	}
+	questionRow(pdf, "Kontrakttype", v.Type.Text, "")
+	questionRow(pdf, "Kilometertal", optionalUintToStr(asset.OdometerKm), "km")
+	questionRow(pdf, "Overdragelse", asset.HandoverStrategy, asset.HandoverStrategyNote)
+	questionRow(pdf, "Transportør", asset.TransportProvider, "")
+
+	questionRow(pdf, "Endelig placering", asset.FinalVehicleLocation, asset.FinalVehicleLocationNote)
 
 	//questionRow(pdf, "Skylderklæring underskrevet", optionalBoolToStr(v.VisitResponse.SESigned), "")
 
@@ -373,7 +380,9 @@ func fillFinanceBox(pdf *fpdf.Fpdf, v models.Visit, FinanceBoxX float64, Finance
 	monthlydisposable := moneyRangeStr(v.VisitResponse.Monetary.MonthlyDisposableMin, v.VisitResponse.Monetary.MonthlyDisposableMax)
 
 	questionRow(pdf, "Arbejde", optionalBoolToStr(v.VisitResponse.Monetary.HasWork), v.VisitResponse.Monetary.Position)
-	questionRow(pdf, "Offentlige ydelser", income, "kr. pr. mnd. kontanthjælp, pension, SU") //
+	questionRow(pdf, "Offentlige ydelser", income, "kr. pr. måned") //
+
+	questionRow(pdf, "", "kontanthjælp, pension, ", "         SU")
 	questionRow(pdf, "Månedsløn (Netto)", salary, "kr. pr. måned")
 	questionRow(pdf, "Rådigheds beløb", monthlydisposable, "kr. pr. måned")
 
@@ -438,7 +447,7 @@ func pdfBody(pdf *fpdf.Fpdf, v models.Visit) {
 	//
 
 	// sizing
-	boxHeightCar := 65.0
+	boxHeightCar := 85.0
 	boxHeightLife := 70.0
 	boxHeightFinance := 50.0
 	boxHeightComments := 50.0

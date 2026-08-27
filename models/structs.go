@@ -270,7 +270,8 @@ type AssetQuestions struct {
 	// auditor moves it themselves to local dealership for later pickup
 	// most important, where is the vehicle after it has been moved, the result of the visit
 	// --- Contract Type ---
-	// Options: "Købekontrakt" (Reservation of title / Ejendomsforbehold)
+	// Options:
+	// 		 "Købekontrakt" (Reservation of title / Ejendomsforbehold)
 	//          "Blanco" (Unsecured)
 	//          "Leasing" (Creditor owns the asset)
 	ContractType string `json:"contract_type"`
