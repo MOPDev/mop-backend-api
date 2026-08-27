@@ -79,41 +79,41 @@ func TestComputeArrivalTimes(t *testing.T) {
 		overrun  bool
 	}{
 		{
-			name:     "forward from start",
-			start:    "13:00", service: 15, end: "20:00", anchor: "start",
+			name:  "forward from start",
+			start: "13:00", service: 15, end: "20:00", anchor: "start",
 			legTimes: []float64{600}, // 10 min travel
 			want:     []string{"13:00", "13:25"},
 		},
 		{
-			name:     "forward keeps start, overrun when route too long",
-			start:    "13:00", service: 60, end: "14:00", anchor: "start",
+			name:  "forward keeps start, overrun when route too long",
+			start: "13:00", service: 60, end: "14:00", anchor: "start",
 			legTimes: []float64{3600}, // 1h travel
 			want:     []string{"13:00", "15:00"},
 			overrun:  true,
 		},
 		{
-			name:     "backward from end",
-			start:    "13:00", service: 15, end: "20:00", anchor: "end",
+			name:  "backward from end",
+			start: "13:00", service: 15, end: "20:00", anchor: "end",
 			legTimes: []float64{600},
 			// last lands on 20:00, prev = 20:00 - 15min service - 10min travel
 			want: []string{"19:35", "20:00"},
 		},
 		{
-			name:     "backward overrun when start would be before start_time",
-			start:    "19:00", service: 60, end: "20:00", anchor: "end",
+			name:  "backward overrun when start would be before start_time",
+			start: "19:00", service: 60, end: "20:00", anchor: "end",
 			legTimes: []float64{3600}, // 1h travel -> begin at 18:00
 			want:     []string{"18:00", "20:00"},
 			overrun:  true,
 		},
 		{
-			name:     "backward without end time falls back to forward",
-			start:    "13:00", service: 15, end: "", anchor: "end",
+			name:  "backward without end time falls back to forward",
+			start: "13:00", service: 15, end: "", anchor: "end",
 			legTimes: []float64{600},
 			want:     []string{"13:00", "13:25"},
 		},
 		{
-			name:     "no travel between stops",
-			start:    "13:00", service: 15, end: "", anchor: "start",
+			name:  "no travel between stops",
+			start: "13:00", service: 15, end: "", anchor: "start",
 			legTimes: []float64{0},
 			want:     []string{"13:00", "13:15"},
 		},
@@ -145,7 +145,7 @@ func TestGroupSegments(t *testing.T) {
 		seg(9, 10, 3), // own segment, size 1, locked final stop
 	}
 
-	segs := groupSegments(visits)
+	segs := groupSegments(visits, true)
 
 	if len(segs) != 4 {
 		t.Fatalf("want 4 segments, got %d", len(segs))
@@ -166,7 +166,7 @@ func TestGroupSegmentsNilIndexCountsAsZero(t *testing.T) {
 	visits := []models.Visit{
 		{Stopnr: uptr(1)}, seg(2, 2, 0),
 	}
-	segs := groupSegments(visits)
+	segs := groupSegments(visits, true)
 	if len(segs) != 1 {
 		t.Fatalf("want 1 segment, got %d", len(segs))
 	}
@@ -181,7 +181,7 @@ func TestGroupSegmentsUnsortedInput(t *testing.T) {
 		seg(8, 5, 1), seg(10, 6, 1), seg(3, 7, 2),
 		seg(2, 2, 0), seg(4, 3, 0), seg(5, 8, 2), seg(7, 9, 2),
 	}
-	segs := groupSegments(visits)
+	segs := groupSegments(visits, true)
 	// same grouping as the design doc example: 3,3,3,1
 	wantSizes := []int{3, 3, 3, 1}
 	if len(segs) != len(wantSizes) {
