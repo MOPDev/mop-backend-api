@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
 	"github.com/MOPDev/mop-backend-api/internal"
@@ -112,7 +113,7 @@ func ReviewedVisit(c *gin.Context) {
 
 		// 1. Get sagsnr
 		var visit models.Visit
-		if res := initializers.DB.Preload("VisitResponse").First(&visit, visitId); res.Error != nil {
+		if res := initializers.DB.Preload("Debitors").Preload("VisitResponse").First(&visit, visitId); res.Error != nil {
 			item.Err = res.Error.Error()
 			iErrs = append(iErrs, item)
 			continue
@@ -124,7 +125,15 @@ func ReviewedVisit(c *gin.Context) {
 			iErrs = append(iErrs, item)
 			continue
 		}
-		docTitle := "besog " + visit.VisitResponse.ActDate.Format("2006-01-02") + "-" + strconv.FormatUint(uint64(visit.Sagsnr), 10)
+
+		// we must also include the name(s) of the debitor
+		names := make([]string, len(visit.Debitors))
+		for i, d := range visit.Debitors {
+			names[i] = d.Name
+		}
+
+		docTitle := "besog " + visit.VisitResponse.ActDate.Format("2006-01-02") + "-" +
+			strconv.FormatUint(uint64(visit.Sagsnr), 10) + "-" + strings.Join(names, ",")
 
 		// 2. Generate PDF
 		pdfBytes, err := internal.GeneratePDFVisit(visitId)

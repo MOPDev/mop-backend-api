@@ -377,7 +377,7 @@ func UploadDocument(srcPath string, sagsnr uint64, title string) error {
 		return fmt.Errorf("cant find file at %s: %w", srcPath, err)
 	}
 
-	// sagsnr = 430415 // jens advokado (test case)
+	//sagsnr = 430415 // jens advokado (test case)
 
 	res, err := ImportDocument(
 		srcPath,
