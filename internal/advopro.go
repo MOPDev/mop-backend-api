@@ -305,7 +305,7 @@ func GetAktivitetsrapporten(visitId uint64) (string, error) {
     SELECT sf.Sagsnr, sf.Placering, sf.Filnavn, sf.Tekst, sf.Tidspunkt
     FROM vwKlientSagsforlob sf
     WHERE sf.Sagsnr = @p1
-    AND sf.Extension = 'docx'
+    AND ( sf.Extension = 'doc' OR sf.Extension = 'docx') 
     ORDER BY sf.Sagsnr`
 
 	// Build path to the mounted drive
