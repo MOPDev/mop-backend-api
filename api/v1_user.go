@@ -180,6 +180,8 @@ func Login(c *gin.Context) {
 		Where("id = ?", attemptID).
 		Update("failure_reason", "User does not exist")
 
+	logger.Infof("Login attempt from username: %s", body.Username)
+
 	var user models.User
 	result := initializers.DB.First(&user, "username = ?", body.Username)
 	if result.Error != nil {
