@@ -186,7 +186,7 @@ func computeSegmentSolutions(matrix [][]float64, globalIdxs []int) map[pairKey]s
 		}
 	}
 
-	if s <= 10 {
+	if s <= 20 {
 		for entry := 0; entry < s; entry++ {
 			for exit := 0; exit < s; exit++ {
 				if entry == exit {
