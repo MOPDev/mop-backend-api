@@ -245,8 +245,10 @@ func Login(c *gin.Context) {
 
 	initializers.DB.Model(&models.LoginAttempt{}).
 		Where("id = ?", attemptID).
-		Update("failure_reason", "None").
-		Update("successful", true)
+		Updates(map[string]interface{}{
+			"failure_reason": "None",
+			"successful":     true,
+		})
 }
 
 func Logout(c *gin.Context) {
