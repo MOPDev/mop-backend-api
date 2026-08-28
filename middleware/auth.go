@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -28,12 +29,24 @@ func RequireAuthUser(c *gin.Context) {
 
 	//decode
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// hmacSampleSecret is a []byte containing your secret, e.g. []byte("my_secret_key")
 		return []byte(os.Getenv("JWT_secret")), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+
 	if err != nil {
-		logger.Info("Password was incorrect")
-		c.AbortWithStatus(http.StatusUnauthorized)
+		switch {
+		case errors.Is(err, jwt.ErrTokenExpired):
+			logger.Info("Token expired")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token_expired"})
+		default:
+			logger.Info("Token is invalid: " + err.Error())
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token_invalid"})
+		}
+		return
+	}
+
+	if !token.Valid {
+		logger.Info("Token is invalid: parsed but not valid")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token_invalid"})
 		return
 	}
 
