@@ -186,11 +186,11 @@ type VisitResponse struct {
 	Completed bool `json:"completed" gorm:"default:false"`
 
 	// actual data
-	ActDate     time.Time     `json:"actual_date" binding:"required"`
-	ActTime     string        `json:"actual_time" binding:"required"`
-	ActLat      string        `json:"actual_latitude" binding:"required"`
-	ActLong     string        `json:"actual_longitude" binding:"required"`
-	PosAccuracy string        `json:"pos_accuracy" binding:"required"`
+	ActDate     time.Time     `json:"actual_date"` // in the future if necessary, make these required
+	ActTime     string        `json:"actual_time"`
+	ActLat      string        `json:"actual_latitude"`
+	ActLong     string        `json:"actual_longitude"`
+	PosAccuracy string        `json:"pos_accuracy"`
 	Duration    time.Duration `json:"duration"`
 
 	// nested questions
