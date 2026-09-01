@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -110,7 +111,7 @@ func groupVisits(results []map[string]interface{}) []map[string]interface{} {
 }
 
 func AvailableVisitCreation(c *gin.Context) {
-	results, err := internal.ExecuteQuery(internal.Server, internal.AdvoPro, internal.StatusFemQuery)
+	results, err := internal.ExecuteQuery(context.Background(), internal.StatusFemQuery)
 	if err != nil {
 		logger.Error(err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -142,7 +143,7 @@ func AvailableVisitBySagsnr(c *gin.Context) {
 	}
 	query := fmt.Sprintf(internal.CreateSagsnrQuery, strings.Join(placeholders, ","))
 
-	results, err := internal.ExecuteQuery(internal.Server, internal.AdvoPro, query)
+	results, err := internal.ExecuteQuery(context.Background(), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
 		return
@@ -755,7 +756,7 @@ func GetBatchHandler(c *gin.Context) {
 			b, err := internal.GetBesogsbrev(id)
 			if err != nil {
 				logger.Errorf("Besogsbrev error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("besøgid %d besøgsbrev: %s", id, err)})
 				return
 			}
 			pdfs = append(pdfs, b)
@@ -764,7 +765,7 @@ func GetBatchHandler(c *gin.Context) {
 			sf, err := internal.GetSF(id)
 			if err != nil {
 				logger.Errorf("salgsfuldmagt error for kobekontrakt, visitid %d, err: %s", visit.ID, err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("besøgid %d besøgsbrev: %s", id, err)})
 				return
 
 			}
@@ -774,7 +775,7 @@ func GetBatchHandler(c *gin.Context) {
 			b, err := internal.GetBesogsbrev(id)
 			if err != nil {
 				logger.Errorf("Besogsbrev error for Leasing, visitid %d, err: %s", visit.ID, err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("besøgid %d besøgsbrev: %s", id, err)})
 				return
 
 			}
@@ -784,7 +785,7 @@ func GetBatchHandler(c *gin.Context) {
 			b, err := internal.GetBesogsbrev(id)
 			if err != nil {
 				logger.Errorf("Besogsbrev error for blanco, visitid %d, err: %s", visit.ID, err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("besøgid %d besøgsbrev: %s", id, err)})
 				return
 
 			}
@@ -794,7 +795,7 @@ func GetBatchHandler(c *gin.Context) {
 			visitLetter, err := internal.Getbrev(id)
 			if err != nil {
 				logger.Errorf("brev error for blanco, visitid %d, err: %s", visit.ID, err.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("visit %d besogsbrev: %s", id, err)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("besøgid %d besøgsbrev: %s", id, err)})
 				return
 
 			}

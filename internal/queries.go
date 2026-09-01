@@ -1,6 +1,6 @@
 package internal
 
-const Server = "MOPSRV01\\SQL1"
+const Server = "192.168.2.11" //"MOPSRV01\\SQL1"
 const AdvoPro = "AdvoPro"
 
 const StatusFemQuery = `

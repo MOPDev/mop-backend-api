@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -154,7 +155,7 @@ func QueryHistorik(sagsnr int, includeDeleted bool) ([]Historik, error) {
 	}
 	query += " ORDER BY HistorikId DESC"
 
-	rows, err := ExecuteQuery(Server, AdvoPro, query, sql.Named("sagsnr", sagsnr))
+	rows, err := ExecuteQuery(context.Background(), query, sql.Named("sagsnr", sagsnr))
 	if err != nil {
 		return nil, fmt.Errorf("QueryHistorik failed: %w", err)
 	}
@@ -179,7 +180,7 @@ func GetHistorikById(historikId int) (*Historik, error) {
         FROM KlientHistorik
         WHERE HistorikId = @historikId`
 
-	rows, err := ExecuteQuery(Server, AdvoPro, query, sql.Named("historikId", historikId))
+	rows, err := ExecuteQuery(context.Background(), query, sql.Named("historikId", historikId))
 	if err != nil {
 		return nil, fmt.Errorf("GetHistorikById failed: %w", err)
 	}

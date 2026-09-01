@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,40 +58,17 @@ func toTime(v interface{}) time.Time {
 	}
 }
 
-func ExecuteQuery(server, database, query string, params ...interface{}) ([]map[string]interface{}, error) {
-	user := os.Getenv("MSSQL_USER")
-	pass := os.Getenv("MSSQL_PASS")
-
-	// Option A: ODBC-style
-	conn := fmt.Sprintf(
-		"server=%s;user id=%s;password=%s;database=%s;encrypt=disable;TrustServerCertificate=true;port=1433;connection timeout=5",
-		server, user, pass, database,
-	)
-
-	// Option B: URL-style
-	// conn := fmt.Sprintf("sqlserver://%s:%s@%s:1433?database=%s&encrypt=true&TrustServerCertificate=true",
-	// 	 url.QueryEscape(user), url.QueryEscape(pass), server, database)
-
-	db, err := sql.Open("sqlserver", conn)
+func ExecuteQuery(ctx context.Context, query string, params ...interface{}) ([]map[string]interface{}, error) {
+	// AdvoProDB is the shared *sql.DB instance
+	rows, err := initializers.AdvoProDB.QueryContext(ctx, query, params...)
 	if err != nil {
-		logger.Error(err.Error())
-		return nil, fmt.Errorf("server could not be opened: %w", err)
-	}
-	defer db.Close()
-
-	rows, err := db.Query(query, params...)
-	if err != nil {
-		logger.Info(query)
-		logger.Infof("%v", params)
-		logger.Error(err.Error())
-		return nil, fmt.Errorf("Query could not be executed: %w", err)
+		return nil, fmt.Errorf("query execution failed: %w", err)
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		logger.Error(err.Error())
-		return nil, fmt.Errorf("failed to fetch column names from database: %w", err)
+		return nil, fmt.Errorf("failed to fetch column names: %w", err)
 	}
 
 	var results []map[string]interface{}
@@ -102,11 +79,10 @@ func ExecuteQuery(server, database, query string, params ...interface{}) ([]map[
 			ptrs[i] = &values[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			logger.Error("Somthing went wrong in the data parsing")
-			return nil, err
+			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		row := map[string]interface{}{}
+		row := make(map[string]interface{}, len(cols))
 		for i, c := range cols {
 			row[c] = values[i]
 		}
@@ -140,7 +116,7 @@ func FetchBulkCaseData(sagsnumre []uint) (map[uint]AdvoProCaseData, error) {
         JOIN vwInkassoStatus inkS ON inkS.Statuskode = f.Status
         WHERE f.Sagsnr IN (%s)`, strings.Join(placeholders, ","))
 
-	results, err := ExecuteQuery(Server, AdvoPro, query, args...)
+	results, err := ExecuteQuery(context.Background(), query, args...)
 	if err != nil {
 		logger.Error(err.Error())
 		return nil, err
@@ -164,7 +140,7 @@ func FetchBulkCaseData(sagsnumre []uint) (map[uint]AdvoProCaseData, error) {
 }
 
 func FetchDebitorData(debitorNum int64) *models.Debitor {
-	debitors, err := ExecuteQuery(Server, AdvoPro, debitorQuery, debitorNum)
+	debitors, err := ExecuteQuery(context.Background(), debitorQuery, debitorNum)
 	if err != nil {
 		logger.Error("Something went wrong during the fetch of a debitor")
 		logger.Error(err.Error())
@@ -246,7 +222,7 @@ type DebtRow struct {
 
 func CurrentDebtCase(sagsnr uint) ([]DebtRow, error) {
 	// 1. Error handling with context
-	debts, err := ExecuteQuery(Server, AdvoPro, debtInfo, sagsnr)
+	debts, err := ExecuteQuery(context.Background(), debtInfo, sagsnr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute debt query for sagsnr %d: %w", sagsnr, err)
 	}
@@ -310,7 +286,7 @@ func GetAktivitetsrapporten(visitId uint64) (string, error) {
 
 	// Build path to the mounted drive
 	//mountPath := os.Getenv("DRIVE_MOUNT_PATH") // e.g. "/mnt/external"
-	advoproResult, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	advoproResult, err := ExecuteQuery(context.Background(), query, visit.Sagsnr)
 	if err != nil {
 		return "", err
 	}

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -149,7 +150,7 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
 		query = KOBEKONTRAKT
 	}
 
-	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	rows, err := ExecuteQuery(context.Background(), query, visit.Sagsnr)
 	if err != nil {
 		logger.Errorf("db err, docpage %s", err.Error())
 		return nil, err
@@ -157,7 +158,7 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
 
 	if len(rows) == 0 {
 		logger.Errorf("No Document found for case %d", visit.Sagsnr)
-		return nil, fmt.Errorf("no document found for case %d", visit.Sagsnr)
+		return nil, fmt.Errorf("Intet dokument fundet til sag: %d", visit.Sagsnr)
 	}
 
 	letterPath := resolveDocPath(toString(rows[0]["Placering"]), toString(rows[0]["Filnavn"]))
@@ -202,7 +203,7 @@ func DocExists(visitId uint64, requireTypeID *uint) error {
 		query = KOBEKONTRAKT
 	}
 
-	rows, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	rows, err := ExecuteQuery(context.Background(), query, visit.Sagsnr)
 	if err != nil {
 		return err
 	}
@@ -260,7 +261,7 @@ func GetSE(visitId uint64) ([]byte, error) {
 		)
 	ORDER BY sf.Tidspunkt desc`
 
-	advoproResult, err := ExecuteQuery(Server, AdvoPro, query, visit.Sagsnr)
+	advoproResult, err := ExecuteQuery(context.Background(), query, visit.Sagsnr)
 	if err != nil {
 		return nil, err
 	}
