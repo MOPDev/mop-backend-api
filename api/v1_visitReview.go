@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,44 @@ import (
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 )
+
+// Regex to split on "v/" or "c/o" (with optional spaces/dots, e.g., "v/", "v. ", "c/o")
+var vSplitRegex = regexp.MustCompile(`(?i)\s+(?:v/|v\.|c/o)\s+`)
+
+// Regex to remove invalid filename/title characters and collapse multiple spaces/dashes
+var invalidCharsRegex = regexp.MustCompile(`[\\/*?:"<>|]`)
+var multiDashRegex = regexp.MustCompile(`-+`)
+
+func sanitizeAndDeduplicateNames(rawNames []string) []string {
+	var result []string
+	seen := make(map[string]bool)
+
+	for _, raw := range rawNames {
+		// 1. Split "Happy horse v/ peter petersen" into ["Happy horse", "peter petersen"]
+		parts := vSplitRegex.Split(raw, -1)
+
+		for _, part := range parts {
+			// 2. Remove illegal characters like / \ : * ? " < > |
+			cleaned := invalidCharsRegex.ReplaceAllString(part, "")
+
+			// 3. Normalize spaces and trim
+			cleaned = strings.TrimSpace(cleaned)
+
+			if cleaned == "" {
+				continue
+			}
+
+			// 4. Deduplicate (case-insensitive check)
+			key := strings.ToLower(cleaned)
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, cleaned)
+			}
+		}
+	}
+
+	return result
+}
 
 func VisitPDF(c *gin.Context) {
 
@@ -126,14 +165,22 @@ func ReviewedVisit(c *gin.Context) {
 			continue
 		}
 
-		// we must also include the name(s) of the debitor
-		names := make([]string, len(visit.Debitors))
+		// Collect raw names
+		rawNames := make([]string, len(visit.Debitors))
 		for i, d := range visit.Debitors {
-			names[i] = d.Name
+			rawNames[i] = d.Name
 		}
 
+		// Clean, split on "v/", deduplicate, and sanitize
+		sanitizedNames := sanitizeAndDeduplicateNames(rawNames)
+
+		// Join names with a dash or space
+		namePart := strings.Join(sanitizedNames, "-")
+		// Optional: replace spaces with dashes or keep them as you prefer
+		// namePart = strings.ReplaceAll(namePart, " ", "_")
+
 		docTitle := "besog " + visit.VisitResponse.ActDate.Format("2006-01-02") + "-" +
-			strconv.FormatUint(uint64(visit.Sagsnr), 10) + "-" + strings.Join(names, ",")
+			strconv.FormatUint(uint64(visit.Sagsnr), 10) + "-" + namePart
 
 		// 2. Generate PDF
 		pdfBytes, err := internal.GeneratePDFVisit(visitId)
