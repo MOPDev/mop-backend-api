@@ -30,6 +30,10 @@ func RequestLogger() gin.HandlerFunc {
 
 		c.Next()
 
+		if _, blocked := c.Get("geoblocked"); blocked {
+			return // Do not log geoblocked traffic
+		}
+
 		status := c.Writer.Status()
 		username := "-"
 

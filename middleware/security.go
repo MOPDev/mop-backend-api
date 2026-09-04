@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/MOPDev/mop-backend-api/initializers"
-	"github.com/MOPDev/mop-backend-api/internal/logger"
 	"github.com/MOPDev/mop-backend-api/models"
 	"github.com/gin-gonic/gin"
 	"github.com/oschwald/geoip2-golang"
@@ -129,7 +128,7 @@ func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
 			return
 		}
 		if isBannedIP(ip) {
-			c.AbortWithStatusJSON(403, gin.H{"error": "Access forbidden"})
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 
@@ -139,7 +138,7 @@ func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
 			return
 		}
 		if record == nil {
-			c.AbortWithStatusJSON(403, gin.H{"error": "Access forbidden"})
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		if record.Country.IsoCode != allowedCountry {
@@ -147,8 +146,9 @@ func GeoIPBlocker(allowedCountry string, dbFile string) gin.HandlerFunc {
 			if name == "" {
 				name = record.Country.IsoCode
 			}
-			logger.Warnf("IP: %s Country: %s (%s)", ip, name, record.Country.IsoCode)
-			c.AbortWithStatusJSON(403, gin.H{"error": "Access forbidden"})
+			c.Set("geoblocked", true)
+			//logger.Warnf("IP: %s Country: %s (%s)", ip, name, record.Country.IsoCode)
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		c.Next()
