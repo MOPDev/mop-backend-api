@@ -238,6 +238,17 @@ func GetVisitsById(c *gin.Context) {
 		return
 	}
 
+	// also get the CPRCVR of the debitor
+	for i, deb := range visit.Debitors {
+		ssn, err := internal.DebitorCPRCVRFromId(uint(deb.AdvoproDebitorId))
+		if err != nil {
+			logger.Error(err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		visit.Debitors[i].SSN = ssn
+	}
+
 	visit.User.Password = ""
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",

@@ -249,6 +249,30 @@ func CurrentDebtCase(sagsnr uint) ([]DebtRow, error) {
 	return result, nil
 }
 
+func DebitorCPRCVRFromId(debitorId uint) (string, error) {
+	debitors, err := ExecuteQuery(context.Background(), debitorQuery, debitorId)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch debitor %d: %w", debitorId, err)
+	}
+	if len(debitors) > 1 {
+		return "", fmt.Errorf("more than one debitor with ID %d", debitorId)
+	}
+	if len(debitors) == 0 {
+		return "", fmt.Errorf("no debitor found with ID %d", debitorId)
+	}
+
+	cprcvr, ok := debitors[0]["CPRnr"].(string)
+	if !ok || cprcvr == "" {
+		return "", fmt.Errorf("debitor %d has no valid CPR/CVR number", debitorId)
+	}
+
+	if len(cprcvr) < 4 {
+		return "", fmt.Errorf("invalid CPR/CVR number for debitor %d", debitorId)
+	}
+
+	return cprcvr[:len(cprcvr)-4] + "0000", nil
+}
+
 // safeByteToFloat prevents panics if the value is nil or not []byte
 func safeByteToFloat(val interface{}) float64 {
 	b, ok := val.([]byte)
