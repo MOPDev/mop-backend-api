@@ -500,6 +500,15 @@ func OptimizeGroup(c *gin.Context) {
 		return
 	}
 
+	// guard against if some of the group is not in the planning phase, it should be impossible to change the route.
+	firststatus := visits[0].StatusID
+	for _, v := range visits {
+		if v.StatusID != firststatus {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not all visits in the group are the same groupId"})
+			return
+		}
+	}
+
 	segs := groupSegments(visits, !input.FreeEndpoints)
 
 	var orderedVisits []models.Visit

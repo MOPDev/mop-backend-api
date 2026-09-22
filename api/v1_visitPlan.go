@@ -31,16 +31,23 @@ func visitIntervalRange(arrivalTime string) (string, bool) {
 
 	hour := rounded.Hour()
 	var start, end time.Time
+	// for late arrivals there is 2 hours before and one hour later
+	// for early arrivals it is 1 hour before and 2 hours later
+	// Latest arrival time is 20:00 by law so if any time is after 19:30 then it should just go from 17-20 anyways
 
 	if hour >= 18 { // late arrival
 		start = rounded.Add(-2 * time.Hour)
 		end = rounded.Add(1 * time.Hour)
+		if hour == 20 {
+			start = rounded.Add(-3 * time.Hour)
+			end = rounded
+		}
 	} else {
 		start = rounded.Add(-1 * time.Hour)
 		end = rounded.Add(2 * time.Hour)
 	}
 
-	// Cap end time at 20:00
+	// Cap end time at 20:00 // legacy
 	maxEnd := time.Date(0, 1, 1, 20, 0, 0, 0, time.UTC)
 	if end.After(maxEnd) {
 		end = maxEnd
