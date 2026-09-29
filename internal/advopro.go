@@ -249,7 +249,7 @@ func CurrentDebtCase(sagsnr uint) ([]DebtRow, error) {
 	return result, nil
 }
 
-func DebitorCPRCVRFromId(debitorId uint) (string, error) {
+func DebitorCPRFromId(debitorId uint) (string, error) {
 	debitors, err := ExecuteQuery(context.Background(), debitorQuery, debitorId)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch debitor %d: %w", debitorId, err)
@@ -263,7 +263,13 @@ func DebitorCPRCVRFromId(debitorId uint) (string, error) {
 
 	cprcvr, ok := debitors[0]["CPRnr"].(string)
 	if !ok || cprcvr == "" {
-		return "", fmt.Errorf("debitor %d has no valid CPR/CVR number", debitorId)
+		// if the debitor has no CPR then perhaps is a company
+		cvpr, ok1 := debitors[0]["CPRCVR"].(string)
+		if !ok1 || cvpr == "" {
+			return "", fmt.Errorf("debitor %d has no valid CPR/CVR number", debitorId)
+		}
+		// then is just a company and company has no CPR
+		return "000000-0000", fmt.Errorf("debitor %d is company", debitorId)
 	}
 
 	if len(cprcvr) < 4 {

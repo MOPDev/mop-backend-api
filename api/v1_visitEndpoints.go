@@ -240,7 +240,7 @@ func GetVisitsById(c *gin.Context) {
 
 	// also get the CPRCVR of the debitor
 	for i, deb := range visit.Debitors {
-		ssn, err := internal.DebitorCPRCVRFromId(uint(deb.AdvoproDebitorId))
+		ssn, err := internal.DebitorCPRFromId(uint(deb.AdvoproDebitorId))
 		if err != nil {
 			logger.Error(err.Error())
 			//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
