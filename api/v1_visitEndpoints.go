@@ -243,8 +243,10 @@ func GetVisitsById(c *gin.Context) {
 		ssn, err := internal.DebitorCPRCVRFromId(uint(deb.AdvoproDebitorId))
 		if err != nil {
 			logger.Error(err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			//return
+			// if cant find then just log the error and then too bad
+			ssn = "000000-0000"
 		}
 		visit.Debitors[i].SSN = ssn
 	}

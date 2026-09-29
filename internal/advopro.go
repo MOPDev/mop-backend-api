@@ -270,6 +270,7 @@ func DebitorCPRCVRFromId(debitorId uint) (string, error) {
 		return "", fmt.Errorf("invalid CPR/CVR number for debitor %d", debitorId)
 	}
 
+	// returns 121212-0000
 	return cprcvr[:len(cprcvr)-4] + "0000", nil
 }
 
