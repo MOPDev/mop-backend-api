@@ -1,6 +1,7 @@
 package internal
 
 const Server = "192.168.2.11" //"MOPSRV01\\SQL1"
+const ServerPort = "3000"
 const AdvoPro = "AdvoPro"
 
 const StatusFemQuery = `

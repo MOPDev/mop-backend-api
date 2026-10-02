@@ -38,8 +38,8 @@ func openAdvoPro() (*sql.DB, error) {
 	user := os.Getenv("MSSQL_USER")
 	pass := os.Getenv("MSSQL_PASS")
 	conn := fmt.Sprintf(
-		"server=%s;user id=%s;password=%s;database=%s;encrypt=disable;TrustServerCertificate=true;port=1433;connection timeout=15",
-		Server, user, pass, AdvoPro,
+		"server=%s;user id=%s;password=%s;database=%s;encrypt=disable;TrustServerCertificate=true;port=%s;connection timeout=15",
+		Server, user, pass, AdvoPro, ServerPort,
 	)
 	db, err := sql.Open("sqlserver", conn)
 	if err != nil {
