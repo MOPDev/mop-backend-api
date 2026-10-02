@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -637,19 +638,20 @@ func AktivitersRapport(c *gin.Context) {
 		return
 	}
 
-	filepath, err := internal.GetAktivitetsrapporten(visitID)
+	srcPath, err := internal.GetAktivitetsrapporten(visitID)
 	if err != nil {
 		logger.Errorf("error occured during filepath retrival: %s", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	pdfPath, err := internal.ConvertDocxToPdf(filepath)
+	pdfPath, err := internal.ConvertDocxToPdf(srcPath)
 	if err != nil {
 		logger.Errorf("error occured during docx to pdf: %s", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	defer os.RemoveAll(filepath.Dir(pdfPath))
 
 	c.Header("Content-Disposition", "inline; filename=aktivitetsrapport.pdf")
 	c.Header("Content-Type", "application/pdf")

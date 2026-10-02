@@ -25,7 +25,13 @@ import (
 var libreOfficeMu sync.Mutex
 
 func ConvertDocxToPdf(docxPath string) (string, error) {
-	outDir := filepath.Dir(docxPath)
+	// Convert into a throwaway local temp dir, NOT the source docx's directory.
+	// The source may live on a shared/production folder (e.g. the AdvoPro share),
+	// where LibreOffice would happily overwrite an existing PDF of the same name.
+	outDir, err := os.MkdirTemp("", "docx2pdf-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
 
 	libreOfficeBin := "libreoffice"
 	if runtime.GOOS == "windows" {
@@ -38,6 +44,7 @@ func ConvertDocxToPdf(docxPath string) (string, error) {
 	libreOfficeMu.Unlock()
 
 	if err != nil {
+		os.RemoveAll(outDir)
 		return "", fmt.Errorf("libreoffice conversion failed: %w, Output: %s", err, string(output))
 	}
 
@@ -47,6 +54,7 @@ func ConvertDocxToPdf(docxPath string) (string, error) {
 	pdfPath := filepath.Join(outDir, pdfName)
 
 	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
+		os.RemoveAll(outDir)
 		return "", fmt.Errorf("expected PDF not found at: %s", pdfPath)
 	}
 
@@ -174,7 +182,7 @@ func getDocPage(visitId uint64, requireTypeID *uint, page int) ([]byte, error) {
 		logger.Errorf("docx to pdf, failed: %s", err.Error())
 		return nil, fmt.Errorf("failed to convert document to PDF: %w", err)
 	}
-	defer os.Remove(pdfPath)
+	defer os.RemoveAll(filepath.Dir(pdfPath))
 
 	fileBytes, err := os.ReadFile(pdfPath)
 	if err != nil {
