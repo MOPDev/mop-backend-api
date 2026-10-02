@@ -159,6 +159,7 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 		if destFolder == "" {
 			destFolder = `\\MOPSRV01\AdvoPro\Opgaver\Jurist\AutoImport\` + strconv.FormatUint(sagsnr, 10)
 		}
+		destFolder = `\\MOPSRV01\AdvoPro\Opgaver\Jurist\AutoImport\` + strconv.FormatUint(sagsnr, 10)
 	}
 	db1.Close() // Done with pre-checks, release connection
 	// --- End Phase 1 ---
