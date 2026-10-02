@@ -150,6 +150,17 @@ func ReviewedVisit(c *gin.Context) {
 
 	var iErrs []iErr
 
+	// Fail fast if the AdvoPro database is unreachable, otherwise every upload
+	// would run and fail with identical connection errors. No status is changed.
+	if err := internal.PingAdvoPro(); err != nil {
+		logger.Errorf("ReviewedVisit: AdvoPro database unreachable: %s", err.Error())
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "AdvoPro-databasen er utilgængelig. Prøv igen senere.",
+			"err":   err.Error(),
+		})
+		return
+	}
+
 	for _, visitId := range body.ReviewedIds {
 		item := iErr{ID: visitId, Err: "no error"}
 

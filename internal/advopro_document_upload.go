@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -45,6 +46,20 @@ func openAdvoPro() (*sql.DB, error) {
 		return nil, fmt.Errorf("server could not be opened: %w", err)
 	}
 	return db, nil
+}
+
+// PingAdvoPro is a fail-fast connectivity check against the AdvoPro database.
+// Used as a pre-flight guard so mass uploads don't run every item and fail them all
+// when the database is down.
+func PingAdvoPro() error {
+	db, err := openAdvoPro()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return db.PingContext(ctx)
 }
 
 // --- Path resolution ---
