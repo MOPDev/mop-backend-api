@@ -175,6 +175,7 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 
 	localDest := filepath.Join(localFolder, uniqueName)
 	if err := copyFile(srcFilePath, localDest); err != nil {
+		logger.Errorf("error while copying file: %s", err.Error())
 		return nil, fmt.Errorf("failed to copy file: %w", err)
 	}
 
@@ -297,6 +298,8 @@ func ImportDocument(srcFilePath, title string, sagsnr uint64, empID int, user, d
 }
 
 // copyFile copies src to dst, preserving content (and best-effort mod time).
+// It never overwrites: if dst already exists the copy fails rather than
+// truncating the existing file.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -304,7 +307,7 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
