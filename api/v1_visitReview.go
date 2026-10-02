@@ -231,11 +231,14 @@ func ReviewedVisit(c *gin.Context) {
 		iErrs = append(iErrs, item)
 	}
 	// If every item has an error, return 500
+	amountFailed := 0
 	allFailed := len(iErrs) > 0
 	for _, e := range iErrs {
 		if e.Err == "no error" {
 			allFailed = false
-			break
+		} else {
+			// if there was not no error then must be there was an error
+			amountFailed = amountFailed + 1
 		}
 	}
 	var errStrings []string
@@ -250,6 +253,10 @@ func ReviewedVisit(c *gin.Context) {
 		return
 	}
 
-	logger.Errorf("some review failed %s", ErrString)
+	// if some failed then
+	if amountFailed > 0 {
+		logger.Errorf("some review failed %s", ErrString)
+	}
+
 	c.JSON(http.StatusOK, iErrs)
 }
