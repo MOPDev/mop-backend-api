@@ -495,8 +495,8 @@ func OptimizeGroup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if len(visits) < 2 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least 2 visits to optimize"})
+	if len(visits) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Group has no visits"})
 		return
 	}
 
@@ -509,19 +509,24 @@ func OptimizeGroup(c *gin.Context) {
 		}
 	}
 
-	segs := groupSegments(visits, !input.FreeEndpoints)
-
 	var orderedVisits []models.Visit
 
-	if input.FreeEndpoints {
-		orderedVisits, err = optimizeFree(visits, segs, costing, mode)
-		if err != nil {
-			logger.Errorf("OptimizeGroup: %s", err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+	if len(visits) < 2 {
+		// a single visit has no order to optimize; keep it as-is and let the
+		// route/time computation below schedule it from the anchor setting.
+		orderedVisits = visits
 	} else {
-		orderedVisits = optimizeSegmented(visits, segs, costing, mode)
+		segs := groupSegments(visits, !input.FreeEndpoints)
+		if input.FreeEndpoints {
+			orderedVisits, err = optimizeFree(visits, segs, costing, mode)
+			if err != nil {
+				logger.Errorf("OptimizeGroup: %s", err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			orderedVisits = optimizeSegmented(visits, segs, costing, mode)
+		}
 	}
 
 	if strings.ToLower(os.Getenv("DEBUG")) == "true" {

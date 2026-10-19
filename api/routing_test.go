@@ -117,6 +117,18 @@ func TestComputeArrivalTimes(t *testing.T) {
 			legTimes: []float64{0},
 			want:     []string{"13:00", "13:15"},
 		},
+		{
+			name:  "single stop anchored on start",
+			start: "13:00", service: 15, end: "20:00", anchor: "start",
+			legTimes: []float64{},
+			want:     []string{"13:00"},
+		},
+		{
+			name:  "single stop anchored on end",
+			start: "13:00", service: 15, end: "20:00", anchor: "end",
+			legTimes: []float64{},
+			want:     []string{"20:00"},
+		},
 	}
 
 	for _, tc := range cases {

@@ -145,7 +145,7 @@ func computeAndStoreRoute(userID uint, groupId uint, costing, mode string) ([]st
 		Order("stop_nr ASC").Find(&visits).Error; err != nil {
 		return nil, 0, 0, false, err
 	}
-	if len(visits) < 2 {
+	if len(visits) == 0 {
 		return []string{}, 0, 0, false, nil
 	}
 
