@@ -54,6 +54,7 @@ func groupVisits(results []map[string]interface{}) []map[string]interface{} {
 
 		if !ok1 {
 			// we skip this one if not okay
+			logger.Errorf("could not find the sagsnr for index: %d", index)
 			continue
 		}
 
