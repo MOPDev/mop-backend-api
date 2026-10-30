@@ -35,7 +35,9 @@ func start_server() {
 	r := gin.New() // was gin.Default()
 	r.Use(logger.RequestLogger())
 	r.Use(middleware.CORSMiddleware)
-	r.Use(middleware.GeoIPBlocker("DK", "./static/GeoLite2-Country.mmdb"))
+
+	// for testing i have removed GEO blocker
+	//r.Use(middleware.GeoIPBlocker("DK", "./static/GeoLite2-Country.mmdb"))
 	// Trust your nginx proxy IP(s) or the private networks where your proxies live.
 	// If nginx connects from 127.0.0.1 (same host):
 	if err := r.SetTrustedProxies([]string{
