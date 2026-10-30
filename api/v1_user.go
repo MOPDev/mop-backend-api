@@ -190,7 +190,7 @@ func Login(c *gin.Context) {
 	result := initializers.DB.First(&user, "username = ?", body.Username)
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error" : "invalid credentials"
+			"error": "invalid credentials",
 			//"error": result.Error.Error(),
 		})
 		return
