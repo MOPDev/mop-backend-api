@@ -37,7 +37,8 @@ func start_server() {
 	r.Use(middleware.CORSMiddleware)
 
 	// for testing i have removed GEO blocker
-	//r.Use(middleware.GeoIPBlocker("DK", "./static/GeoLite2-Country.mmdb"))
+	r.Use(middleware.GeoIPBlocker("DK", "./static/GeoLite2-Country.mmdb"))
+
 	// Trust your nginx proxy IP(s) or the private networks where your proxies live.
 	// If nginx connects from 127.0.0.1 (same host):
 	if err := r.SetTrustedProxies([]string{
@@ -113,9 +114,9 @@ func start_server() {
 		apiv1.GET("/visit/pdf", middleware.RequireAuthOfficeWorker, api.VisitPDF)
 		apiv1.POST("visit/reviewed", middleware.RequireAuthOfficeWorker, api.ReviewedVisit)
 
-		apiv1.POST("/penneo/start", api.StartPenneoFlow)
-		apiv1.POST("/penneo/webhook", api.PenneoWebhook)
-		apiv1.GET("/penneo/events/:caseFileId", api.PenneoSSE)
+		apiv1.POST("/penneo/start", middleware.RequireAuthAuditor, api.StartPenneoFlow)
+		apiv1.POST("/penneo/webhook", middleware.RequireAuthAuditor, api.PenneoWebhook)
+		apiv1.GET("/penneo/events/:caseFileId", middleware.RequireAuthAuditor, api.PenneoSSE)
 
 		apiv1.POST("/error", middleware.RequireAuthUser, api.ErrorLog)
 
@@ -132,12 +133,12 @@ func start_server() {
 		apiv1.PATCH("/route-settings", middleware.RequireAuthOfficeWorker, api.PatchRouteSettings)
 
 		// valhalla
-		apiv1.GET("/tsp/health", tsp.HealthHandler)
-		apiv1.POST("/tsp/optimize", tsp.OptimizeHandler)
+		apiv1.GET("/tsp/health", middleware.RequireAuthAuditor, tsp.HealthHandler)
+		apiv1.POST("/tsp/optimize", middleware.RequireAuthAuditor, tsp.OptimizeHandler)
 
 		// maptiler
-		apiv1.Any("/tiles/*path", proxy.NewReverseProxy("http://192.168.2.14:8003"))
-		apiv1.Any("/geocode/*path", proxy.NewReverseProxy("http://192.168.2.14:2322"))
+		apiv1.Any("/tiles/*path", middleware.RequireAuthAuditor, proxy.NewReverseProxy("http://192.168.2.14:8003"))
+		apiv1.Any("/geocode/*path", middleware.RequireAuthAuditor, proxy.NewReverseProxy("http://192.168.2.14:2322"))
 
 		// penneo integration
 

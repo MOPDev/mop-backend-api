@@ -190,13 +190,14 @@ func Login(c *gin.Context) {
 	result := initializers.DB.First(&user, "username = ?", body.Username)
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": result.Error.Error(),
+			"error" : "invalid credentials"
+			//"error": result.Error.Error(),
 		})
 		return
 	}
 	if user.ID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "ERROR could find user",
+			"error": "invalid credentials",
 		})
 		return
 	}
@@ -206,7 +207,7 @@ func Login(c *gin.Context) {
 	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "ERROR could find user",
+			"error": "invalid credentials",
 		})
 		return
 	}
@@ -231,8 +232,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("Authorization", tokenString, 3600*24*7, "/", os.Getenv("DOMAIN"), true, true) // should be true, true in prod
 	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("Authorization", tokenString, 3600*24*7, "/", os.Getenv("DOMAIN"), true, true) // should be true, true in prod
 	datatype := c.ContentType()
 
 	switch datatype {
